@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
-interface DoctorProfile {
+export interface DoctorProfile {
   id: string;
   auth_user_id: string;
   full_name: string;
@@ -11,6 +11,9 @@ interface DoctorProfile {
   specialty: string | null;
   registration_number: string | null;
   clinic_name: string | null;
+  phone: string | null;
+  clinic_address: string | null;
+  qualification: string | null;
 }
 
 interface AuthContextType {
@@ -21,6 +24,7 @@ interface AuthContextType {
   isConfigured: boolean;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,18 +44,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const fetchDoctorProfile = async (userId: string) => {
     try {
-      console.log('Fetching doctor profile for:', userId);
-      const { data: existing, error: fetchError } = await supabase
+      const { data: existing } = await supabase
         .from('doctors')
         .select('*')
         .eq('auth_user_id', userId)
         .single();
 
       if (existing) {
-        console.log('Doctor profile found');
         setDoctorProfile(existing);
       } else {
-        console.log('No profile found, checking user metadata...');
         const { data: newUser } = await supabase.auth.getUser();
         if (newUser?.user) {
           const { data: created, error: createError } = await supabase
@@ -64,12 +65,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             })
             .select()
             .single();
-          
+
           if (createError) throw createError;
-          if (created) {
-            console.log('Doctor profile created successfully');
-            setDoctorProfile(created);
-          }
+          if (created) setDoctorProfile(created);
         }
       }
     } catch (err) {
@@ -77,8 +75,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const refreshProfile = async () => {
+    if (user) await fetchDoctorProfile(user.id);
+  };
+
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -91,19 +92,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth event:', event);
       setSession(session);
       setUser(session?.user ?? null);
-      
       if (session?.user) {
-        // Fetch profile but don't hold up the loading state
         fetchDoctorProfile(session.user.id);
       } else {
         setDoctorProfile(null);
       }
-      
       setLoading(false);
     });
 
@@ -133,7 +129,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, doctorProfile, loading, isConfigured, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, session, doctorProfile, loading, isConfigured, signInWithGoogle, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

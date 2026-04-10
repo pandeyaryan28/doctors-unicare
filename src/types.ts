@@ -18,8 +18,9 @@ export interface Consultation {
 
 export interface Medicine {
   name: string;
-  dosage: string;
-  duration: string;
+  timing: ('morning' | 'noon' | 'evening')[];
+  food: 'before' | 'after';
+  days: number;
 }
 
 export interface QueueItem {
