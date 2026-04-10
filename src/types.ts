@@ -4,11 +4,15 @@ export interface Patient {
   age: number;
   gender: string;
   phone: string;
+  blood_group?: string;
+  email?: string;
+  address?: string;
 }
 
 export interface Consultation {
   id: string;
   patient_id: string;
+  queue_id: string | null;
   symptoms: string;
   diagnosis: string;
   notes: string;
@@ -26,8 +30,13 @@ export interface Medicine {
 export interface QueueItem {
   id: string;
   patient_id: string;
+  doctor_id: string;
   status: 'waiting' | 'in-consultation' | 'completed';
-  time: string;
+  token_number: number;
+  chief_complaint: string | null;
+  called_at: string | null;
+  created_at: string;
+  updated_at: string;
   patient?: Patient;
 }
 
