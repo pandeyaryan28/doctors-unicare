@@ -15,6 +15,10 @@ export const supabase = createClient(
 const patientSupabaseUrl = import.meta.env.VITE_PATIENT_SUPABASE_URL || '';
 const patientSupabaseAnonKey = import.meta.env.VITE_PATIENT_SUPABASE_ANON_KEY || '';
 
+if (!patientSupabaseUrl || !patientSupabaseAnonKey) {
+  console.error('Missing Patient Supabase environment variables. If you just added them to .env, please RESTART YOUR DEVELOPMENT SERVER.');
+}
+
 export const patientSupabase = createClient(
   patientSupabaseUrl || 'https://placeholder.supabase.co',
   patientSupabaseAnonKey || 'placeholder'
