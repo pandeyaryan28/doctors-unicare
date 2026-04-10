@@ -880,7 +880,6 @@ function ConsultationPage({
                 </div>
                 <button 
                   onClick={handleSaveConsultation}
-                  disabled={!consultationForm.diagnosis || consultationForm.medicines.length === 0}
                   className="px-10 py-5 bg-blue-600 text-white rounded-2xl font-bold shadow-xl shadow-blue-200 dark:shadow-none hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
                 >
                   <CheckCircle2 className="w-6 h-6" />
