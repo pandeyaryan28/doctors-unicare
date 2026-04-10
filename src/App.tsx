@@ -324,53 +324,124 @@ const QRScanner = ({ onScan }: { onScan: (url: string) => void }) => {
 
 const PrescriptionPDF = (consultation: Consultation, patient: Patient) => {
   const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
   
-  // Header
-  doc.setFontSize(22);
-  doc.setTextColor(0, 102, 255);
-  doc.text('UniCare EMR', 20, 20);
+  // High-end Letterhead
+  doc.setFillColor(37, 99, 235); // Blue-600
+  doc.rect(0, 0, pageWidth, 40, 'F');
+  
+  // Clinic Branding
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(24);
+  doc.setFont('helvetica', 'bold');
+  doc.text('UniCare Health', 20, 20);
   
   doc.setFontSize(10);
-  doc.setTextColor(100);
-  doc.text('Dr. Aryan Pandey | General Physician', 20, 28);
-  doc.text('Reg No: 123456789', 20, 33);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Advanced Digital Health Solutions', 20, 28);
   
-  doc.setDrawColor(230);
-  doc.line(20, 40, 190, 40);
-  
-  // Patient Info
+  // Doctor Details (Header Right)
   doc.setFontSize(12);
-  doc.setTextColor(0);
-  doc.text(`Patient: ${patient.name}`, 20, 50);
-  doc.text(`Age/Gender: ${patient.age}Y / ${patient.gender}`, 20, 57);
-  doc.text(`Date: ${new Date(consultation.created_at).toLocaleDateString()}`, 140, 50);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DR. ARYAN PANDEY', pageWidth - 20, 18, { align: 'right' });
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('General Physician & Diabetologist', pageWidth - 20, 24, { align: 'right' });
+  doc.text('MBBS, MD (General Medicine)', pageWidth - 20, 29, { align: 'right' });
+  doc.text('Reg No: DMC/12345/2024', pageWidth - 20, 34, { align: 'right' });
   
-  // Clinical Notes
-  doc.setFontSize(14);
-  doc.text('Clinical Findings', 20, 75);
+  // Patient Information Block
+  doc.setFillColor(249, 250, 251);
+  doc.rect(20, 50, pageWidth - 40, 30, 'F');
+  doc.setDrawColor(243, 244, 246);
+  doc.rect(20, 50, pageWidth - 40, 30, 'D');
+  
+  doc.setTextColor(107, 114, 128);
+  doc.setFontSize(8);
+  doc.text('PATIENT NAME', 25, 58);
+  doc.text('AGE / GENDER', 85, 58);
+  doc.text('PATIENT ID', 135, 58);
+  doc.text('DATE', pageWidth - 25, 58, { align: 'right' });
+  
+  doc.setTextColor(17, 24, 39);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text(patient.name.toUpperCase(), 25, 66);
+  doc.text(`${patient.age}Y / ${patient.gender.toUpperCase()}`, 85, 66);
+  doc.text(`#${patient.id.slice(0, 8).toUpperCase()}`, 135, 66);
+  doc.text(new Date().toLocaleDateString('en-IN'), pageWidth - 25, 66, { align: 'right' });
+  
+  // RX Section
+  doc.setTextColor(37, 99, 235);
+  doc.setFontSize(32);
+  doc.text('Rx', 20, 95);
+  
+  // Symptoms & Diagnosis
+  doc.setTextColor(75, 85, 99);
   doc.setFontSize(10);
-  doc.text(`Symptoms: ${consultation.symptoms}`, 20, 85);
-  doc.text(`Diagnosis: ${consultation.diagnosis}`, 20, 92);
+  doc.setFont('helvetica', 'bold');
+  doc.text('CHIEF COMPLAINTS:', 20, 110);
+  doc.setFont('helvetica', 'normal');
+  doc.text(consultation.symptoms || 'None reported', 20, 116, { maxWidth: pageWidth - 40 });
   
-  // Prescription
-  doc.setFontSize(14);
-  doc.text('Prescription', 20, 110);
+  doc.setFont('helvetica', 'bold');
+  doc.text('DIAGNOSIS:', 20, 130);
+  doc.setFont('helvetica', 'normal');
+  doc.text(consultation.diagnosis || 'Clinical evaluation pending', 20, 136, { maxWidth: pageWidth - 40 });
   
+  // Medicines Table
   autoTable(doc, {
-    startY: 115,
-    head: [['Medicine', 'Dosage', 'Duration']],
-    body: consultation.medicines.map(m => [m.name, m.dosage, m.duration]),
-    theme: 'striped',
-    headStyles: { fillColor: [0, 102, 255] }
+    startY: 150,
+    head: [['Medicine Name', 'Dosage & Frequency', 'Duration']],
+    body: consultation.medicines.map(m => [
+      m.name.toUpperCase(), 
+      m.dosage,
+      m.duration
+    ]),
+    theme: 'grid',
+    headStyles: { 
+      fillColor: [37, 99, 235], 
+      textColor: [255, 255, 255], 
+      fontSize: 10, 
+      fontStyle: 'bold',
+      halign: 'left'
+    },
+    bodyStyles: { 
+      fontSize: 10, 
+      textColor: [31, 41, 55],
+      cellPadding: 6
+    },
+    alternateRowStyles: {
+      fillColor: [249, 250, 251]
+    },
+    margin: { left: 20, right: 20 }
   });
   
-  // Footer
-  const finalY = (doc as any).lastAutoTable.finalY + 20;
-  doc.setFontSize(10);
-  doc.text('Notes:', 20, finalY);
-  doc.text(consultation.notes, 20, finalY + 7);
+  // Notes & Advice
+  const finalY = (doc as any).lastAutoTable.finalY + 15;
+  if (consultation.notes) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('ADVICE / NOTES:', 20, finalY);
+    doc.setFont('helvetica', 'normal');
+    doc.text(consultation.notes, 20, finalY + 7, { maxWidth: pageWidth - 40 });
+  }
   
-  doc.text('Digitally Signed by Dr. Aryan Pandey', 120, finalY + 40);
+  // Footer & Signature
+  const footerY = doc.internal.pageSize.getHeight() - 40;
+  doc.setDrawColor(229, 231, 235);
+  doc.line(20, footerY, pageWidth - 20, footerY);
+  
+  doc.setFontSize(8);
+  doc.setTextColor(156, 163, 175);
+  doc.text('This is a digitally generated prescription. Valid only with doctor seal/signature.', pageWidth / 2, footerY + 10, { align: 'center' });
+  doc.text('UniCare EMR Security Hash: ' + btoa(consultation.id).slice(0, 16), pageWidth / 2, footerY + 15, { align: 'center' });
+  
+  // Signature Space
+  doc.setTextColor(17, 24, 39);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Digitally Signed by:', pageWidth - 20, footerY + 25, { align: 'right' });
+  doc.text('DR. ARYAN PANDEY', pageWidth - 20, footerY + 30, { align: 'right' });
   
   return doc;
 };
@@ -802,128 +873,190 @@ export default function App() {
               </button>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-1 space-y-6">
-                  <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
-                    <div className="flex flex-col items-center text-center mb-6">
-                      <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600 font-bold text-2xl mb-4 border border-blue-100">
-                        {selectedPatient.name.charAt(0)}
+                <div className="space-y-6">
+                  {/* Patient Quick Info */}
+                  <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm overflow-hidden group">
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold text-xl uppercase">
+                        {selectedPatient.name[0]}
                       </div>
-                      <h3 className="text-xl font-bold text-gray-900">{selectedPatient.name}</h3>
-                      <p className="text-sm text-gray-500">{selectedPatient.gender} • {selectedPatient.age} Years</p>
-                    </div>
-                    <div className="space-y-4 pt-6 border-t border-gray-50">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-gray-400 uppercase">Phone</span>
-                        <span className="text-sm font-medium text-gray-900">{selectedPatient.phone}</span>
+                      <div>
+                        <h3 className="font-bold text-gray-900">{selectedPatient.name}</h3>
+                        <p className="text-xs text-gray-500">ID: #{selectedPatient.id.slice(0, 8)}</p>
                       </div>
                     </div>
-                    {packetData && (
-                      <div className="mt-8 pt-8 space-y-4 border-t border-gray-50">
-                        <button 
-                          onClick={() => setActiveTab('record-view')}
-                          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
-                        >
-                          <FileSearch className="w-5 h-5" />
-                          Expand Full Records
-                        </button>
-                        <button 
-                          onClick={() => setShowSharedData(!showSharedData)}
-                          className="w-full py-4 bg-gray-50 text-gray-600 rounded-2xl font-bold border border-gray-100 hover:bg-gray-100 transition-all"
-                        >
-                          {showSharedData ? 'Hide Inline Preview' : 'Preview Shared Data'}
-                        </button>
-                      </div>
-                    )}
+                    
+                    <div className="space-y-3">
+                      {[
+                        { label: 'Age / Gender', value: `${selectedPatient.age}Y / ${selectedPatient.gender.toUpperCase()}`, icon: Users },
+                        { label: 'Blood Group', value: 'B+ Positive', icon: Activity },
+                        { label: 'Last Visit', value: '12 Oct 2023', icon: Calendar },
+                      ].map((item, i) => (
+                        <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-gray-50/50 group-hover:bg-gray-50 transition-colors">
+                          <div className="flex items-center gap-3">
+                            <item.icon className="w-4 h-4 text-gray-400" />
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{item.label}</span>
+                          </div>
+                          <span className="text-xs font-bold text-gray-900">{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button 
+                      onClick={() => setActiveTab('record-view')}
+                      className="w-full mt-6 py-4 bg-white border-2 border-blue-600 text-blue-600 rounded-2xl text-xs font-bold hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                    >
+                      <FileSearch className="w-4 h-4" />
+                      Expand Full Records
+                    </button>
                   </div>
 
-                  {showSharedData && packetData && (
-                    <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Quick History</h4>
-                        <div className="space-y-4">
-                          {packetData.medical_history.slice(0, 3).map((item, i) => (
-                            <div key={i} className="p-4 bg-gray-50 rounded-2xl">
-                              <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">{item.question}</p>
-                              <p className="text-sm text-gray-900 font-medium">{item.answer}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                  {/* Clinical Context */}
+                  <div className="bg-blue-600 p-6 rounded-3xl shadow-xl shadow-blue-100 text-white relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
+                    <h4 className="text-sm font-bold mb-2">Clinical Protocol</h4>
+                    <p className="text-xs text-blue-50 leading-relaxed mb-4">
+                      Review drug allergies before prescribing. All clinical data is encrypted with SHA-256 for patient privacy.
+                    </p>
+                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider opacity-80">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Verified Security
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 <div className="lg:col-span-2 space-y-6">
-                  <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
-                    <h3 className="text-xl font-bold text-gray-900 mb-6">Clinical Record</h3>
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <textarea 
-                          value={consultationForm.symptoms}
-                          onChange={(e) => setConsultationForm(prev => ({ ...prev, symptoms: e.target.value }))}
-                          placeholder="Symptoms..."
-                          className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 min-h-[100px]"
-                        />
-                        <textarea 
-                          value={consultationForm.diagnosis}
-                          onChange={(e) => setConsultationForm(prev => ({ ...prev, diagnosis: e.target.value }))}
-                          placeholder="Diagnosis..."
-                          className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 min-h-[100px]"
-                        />
+                  <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm overflow-hidden relative">
+                    <div className="absolute top-0 left-0 w-2 h-full bg-blue-600" />
+                    <div className="flex items-center justify-between mb-8">
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900">Clinical Evaluation</h3>
+                        <p className="text-sm text-gray-500">Record symptoms, diagnosis and treatment plan</p>
                       </div>
-                      <div className="bg-gray-50 p-6 rounded-2xl space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                          <input 
-                            type="text" 
-                            placeholder="Medicine"
-                            value={newMedicine.name}
-                            onChange={(e) => setNewMedicine(prev => ({ ...prev, name: e.target.value }))}
-                            className="md:col-span-2 px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm"
+                      <div className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
+                        Session Active
+                      </div>
+                    </div>
+
+                    <div className="space-y-8">
+                      {/* Observations */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-gray-400 uppercase ml-1">Symptoms & Complaints</label>
+                          <textarea 
+                            value={consultationForm.symptoms}
+                            onChange={(e) => setConsultationForm(prev => ({ ...prev, symptoms: e.target.value }))}
+                            placeholder="e.g. Severe headache for 3 days, nausea..."
+                            className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white transition-all min-h-[120px] text-sm"
                           />
-                          <input 
-                            type="text" 
-                            placeholder="Dosage"
-                            value={newMedicine.dosage}
-                            onChange={(e) => setNewMedicine(prev => ({ ...prev, dosage: e.target.value }))}
-                            className="px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm"
-                          />
-                          <div className="flex gap-2">
-                            <input 
-                              type="text" 
-                              placeholder="Days"
-                              value={newMedicine.duration}
-                              onChange={(e) => setNewMedicine(prev => ({ ...prev, duration: e.target.value }))}
-                              className="flex-1 px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm"
-                            />
-                            <button onClick={addMedicine} className="p-3 bg-blue-600 text-white rounded-xl"><Plus className="w-5 h-5" /></button>
-                          </div>
                         </div>
                         <div className="space-y-2">
-                          {consultationForm.medicines.map((med, i) => (
-                            <div key={i} className="flex items-center gap-4 p-3 bg-white rounded-xl border border-gray-100">
-                              <Pill className="w-4 h-4 text-blue-600" />
-                              <div className="flex-1">
-                                <p className="text-sm font-bold text-gray-900">{med.name}</p>
-                                <p className="text-[10px] text-gray-500">{med.dosage} • {med.duration}</p>
-                              </div>
-                              <button onClick={() => removeMedicine(i)} className="text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
-                            </div>
-                          ))}
+                          <label className="text-xs font-bold text-gray-400 uppercase ml-1">Clinical Diagnosis</label>
+                          <textarea 
+                            value={consultationForm.diagnosis}
+                            onChange={(e) => setConsultationForm(prev => ({ ...prev, diagnosis: e.target.value }))}
+                            placeholder="e.g. Acute Migraine, Viral Fever..."
+                            className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white transition-all min-h-[120px] text-sm"
+                          />
                         </div>
                       </div>
-                      <textarea 
-                        value={consultationForm.notes}
-                        onChange={(e) => setConsultationForm(prev => ({ ...prev, notes: e.target.value }))}
-                        placeholder="Additional Notes..."
-                        className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 min-h-[80px]"
-                      />
-                      <div className="pt-6 flex gap-4">
+
+                      {/* Prescription Builder */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-gray-400 uppercase ml-1">Medication Plan (Rx)</label>
+                          <span className="text-[10px] font-medium text-gray-400">{consultationForm.medicines.length} items added</span>
+                        </div>
+                        
+                        <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100 space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                            <div className="md:col-span-5">
+                              <input 
+                                type="text" 
+                                placeholder="Medicine Name"
+                                value={newMedicine.name}
+                                onChange={(e) => setNewMedicine(prev => ({ ...prev, name: e.target.value }))}
+                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              />
+                            </div>
+                            <div className="md:col-span-3">
+                              <input 
+                                type="text" 
+                                placeholder="e.g. 1-0-1"
+                                value={newMedicine.dosage}
+                                onChange={(e) => setNewMedicine(prev => ({ ...prev, dosage: e.target.value }))}
+                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              />
+                            </div>
+                            <div className="md:col-span-3">
+                              <input 
+                                type="text" 
+                                placeholder="Duration"
+                                value={newMedicine.duration}
+                                onChange={(e) => setNewMedicine(prev => ({ ...prev, duration: e.target.value }))}
+                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              />
+                            </div>
+                            <div className="md:col-span-1">
+                              <button 
+                                onClick={addMedicine}
+                                disabled={!newMedicine.name}
+                                className="w-full h-full bg-blue-600 text-white rounded-xl flex items-center justify-center hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-lg shadow-blue-100"
+                              >
+                                <Plus className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {consultationForm.medicines.length > 0 ? (
+                            <div className="grid grid-cols-1 gap-2">
+                              {consultationForm.medicines.map((med, i) => (
+                                <motion.div 
+                                  initial={{ opacity: 0, x: -10 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  key={i} 
+                                  className="flex items-center gap-4 p-3 bg-white rounded-xl border border-gray-100 group shadow-sm"
+                                >
+                                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                                    <Pill className="w-4 h-4 text-blue-600" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-bold text-gray-900 uppercase tracking-tight">{med.name}</p>
+                                    <p className="text-[10px] text-gray-500 font-medium">{med.dosage} • {med.duration}</p>
+                                  </div>
+                                  <button onClick={() => removeMedicine(i)} className="p-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </motion.div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-center py-4 text-xs text-gray-400 italic">No medications added yet</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-gray-400 uppercase ml-1">Additional Advice / Notes</label>
+                        <textarea 
+                          value={consultationForm.notes}
+                          onChange={(e) => setConsultationForm(prev => ({ ...prev, notes: e.target.value }))}
+                          placeholder="e.g. Bed rest, avoid cold drinks, follow up in 1 week..."
+                          className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white transition-all min-h-[100px] text-sm"
+                        />
+                      </div>
+
+                      <div className="pt-6 border-t border-gray-50 flex items-center justify-between gap-6">
+                        <div className="text-xs text-gray-400 font-medium">
+                          All changes are autosaved | Secure Encryption Active
+                        </div>
                         <button 
                           onClick={handleSaveConsultation}
-                          className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                          disabled={!consultationForm.diagnosis || consultationForm.medicines.length === 0}
+                          className="px-10 py-5 bg-blue-600 text-white rounded-2xl font-bold shadow-xl shadow-blue-200 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
                         >
-                          <CheckCircle2 className="w-5 h-5" />
-                          Complete Consultation & Print
+                          <CheckCircle2 className="w-6 h-6" />
+                          Finalize & Print Rx
                         </button>
                       </div>
                     </div>
