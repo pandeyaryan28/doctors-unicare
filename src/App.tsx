@@ -6,39 +6,42 @@ import {
   Clock, 
   History, 
   QrCode, 
-  Search, 
   Bell, 
   Plus,
   ChevronRight,
   Activity,
   FileText,
-  User,
   Calendar,
-  Download,
-  Share2,
   Trash2,
   CheckCircle2,
   AlertCircle,
-  ExternalLink,
   ArrowLeft,
   Stethoscope,
   Pill,
-  FileSearch
+  FileSearch,
+  LogOut
 } from 'lucide-react';
 import { cn, calculateAge, formatDateTime } from './lib/utils';
 import { Patient, Consultation, QueueItem, PacketData, Medicine } from './types';
+import { useAuth } from './contexts/AuthContext';
+import LoginPage from './pages/LoginPage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // --- Components ---
 
 const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab: (tab: string) => void }) => {
+  const { doctorProfile, signOut } = useAuth();
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'patients', label: 'Patients', icon: Users },
     { id: 'queue', label: 'Queue', icon: Clock },
     { id: 'consultations', label: 'Consultations', icon: History },
   ];
+
+  const initials = doctorProfile?.full_name
+    ? doctorProfile.full_name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+    : 'DR';
 
   return (
     <div className="w-64 bg-white border-r border-gray-100 flex flex-col h-screen sticky top-0">
@@ -71,16 +74,27 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
         ))}
       </nav>
 
-      <div className="p-4 mt-auto border-t border-gray-50">
+      <div className="p-4 mt-auto border-t border-gray-50 space-y-2">
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50">
-          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
-            DR
-          </div>
+          {doctorProfile?.avatar_url ? (
+            <img src={doctorProfile.avatar_url} alt="avatar" className="w-8 h-8 rounded-full object-cover" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+              {initials}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 truncate">Dr. Aryan Pandey</p>
-            <p className="text-[10px] text-gray-500 truncate">General Physician</p>
+            <p className="text-sm font-semibold text-gray-900 truncate">{doctorProfile?.full_name || 'Doctor'}</p>
+            <p className="text-[10px] text-gray-500 truncate">{doctorProfile?.specialty || 'General Physician'}</p>
           </div>
         </div>
+        <button
+          onClick={signOut}
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all text-sm font-medium"
+        >
+          <LogOut className="w-4 h-4" />
+          Sign Out
+        </button>
       </div>
     </div>
   );
@@ -218,14 +232,15 @@ const PrescriptionPDF = (consultation: Consultation, patient: Patient) => {
 };
 
 export default function App() {
+  const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [packetData, setPacketData] = useState<PacketData | null>(null);
   const [showSharedData, setShowSharedData] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   
   // Consultation Form State
   const [consultationForm, setConsultationForm] = useState({
@@ -262,8 +277,8 @@ export default function App() {
   };
 
   const handleQRScan = async (url: string) => {
-    setLoading(true);
-    setError(null);
+    setScanLoading(true);
+    setScanError(null);
     try {
       // Simulate fetching packet from short-lived link
       await new Promise(r => setTimeout(r, 1500));
@@ -340,9 +355,9 @@ export default function App() {
       setSelectedPatient(patient!);
       setActiveTab('consultation');
     } catch (err: any) {
-      setError(err.message || "Invalid link or network error");
+      setScanError(err.message || "Invalid link or network error");
     } finally {
-      setLoading(false);
+      setScanLoading(false);
     }
   };
 
@@ -390,6 +405,19 @@ export default function App() {
       medicines: prev.medicines.filter((_, i) => i !== index)
     }));
   };
+
+  // Auth gate
+  if (loading) {
+    return (
+      <div className="loading-screen">
+        <div className="spinner" style={{ width: 40, height: 40, borderWidth: 4, borderColor: '#1e3a5f', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB]">
@@ -684,7 +712,7 @@ export default function App() {
       </main>
 
       <AnimatePresence>
-        {loading && (
+        {scanLoading && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
             <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4" />
             <p className="font-bold text-gray-900">Retrieving Secure Health Packet...</p>
@@ -693,11 +721,11 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {error && (
+        {scanError && (
           <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50">
             <AlertCircle className="w-5 h-5" />
-            <p className="font-bold">{error}</p>
-            <button onClick={() => setError(null)} className="ml-4 p-1 hover:bg-white/20 rounded-lg transition-colors"><Plus className="w-4 h-4 rotate-45" /></button>
+            <p className="font-bold">{scanError}</p>
+            <button onClick={() => setScanError(null)} className="ml-4 p-1 hover:bg-white/20 rounded-lg transition-colors"><Plus className="w-4 h-4 rotate-45" /></button>
           </motion.div>
         )}
       </AnimatePresence>
