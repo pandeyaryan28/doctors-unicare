@@ -3,13 +3,16 @@
 /* ── Google Font ── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
-/* ── Reset & base ── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+/* ── Theme Overrides (Tailwind v4) ── */
+@theme {
+  --font-inter: "Inter", sans-serif;
+}
 
 /* ══════════════════════════════════════
-   LOGIN PAGE
-══════════════════════════════════════ */
+   CUSTOM UTILITIES
+   (We keep these for the login page)
+   ══════════════════════════════════════ */
+
 .login-root {
   position: relative;
   min-height: 100vh;
@@ -74,7 +77,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
   padding: 40px 48px;
 }
 
-/* ── LEFT PANEL ── */
 .left-panel {
   flex: 1;
   display: flex;
@@ -83,7 +85,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
   color: #fff;
 }
 
-/* Brand */
 .brand { display: flex; align-items: center; gap: 14px; }
 .brand-icon {
   width: 52px; height: 52px;
@@ -96,7 +97,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
 .brand-name { font-size: 1.5rem; font-weight: 800; color: #fff; line-height: 1; }
 .brand-sub  { font-size: 0.65rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; color: #60a5fa; margin-top: 2px; }
 
-/* Hero */
 .hero-title {
   font-size: clamp(2rem, 4vw, 3.2rem);
   font-weight: 900;
@@ -117,7 +117,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
   max-width: 420px;
 }
 
-/* Features */
 .feature-list { display: flex; flex-direction: column; gap: 16px; }
 .feature-item {
   display: flex;
@@ -142,7 +141,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
 .feature-label { font-size: .875rem; font-weight: 700; color: #e2e8f0; }
 .feature-desc  { font-size: .75rem; color: #64748b; margin-top: 2px; }
 
-/* ── RIGHT PANEL ── */
 .right-panel {
   flex-shrink: 0;
   width: 420px;
@@ -152,7 +150,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
   align-items: center;
 }
 
-/* Card */
 .login-card {
   width: 100%;
   background: rgba(255,255,255,.05);
@@ -165,7 +162,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
   gap: 24px;
 }
 
-/* Card header */
 .card-header { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .card-icon {
   width: 52px; height: 52px;
@@ -178,7 +174,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
 .card-title    { font-size: 1.35rem; font-weight: 800; color: #f1f5f9; }
 .card-subtitle { font-size: .875rem; color: #64748b; }
 
-/* Divider */
 .divider {
   display: flex; align-items: center; gap: 12px;
 }
@@ -188,7 +183,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
 }
 .divider span { font-size: .75rem; font-weight: 600; color: #475569; white-space: nowrap; }
 
-/* Google button */
 .google-btn {
   width: 100%;
   display: flex; align-items: center; justify-content: center;
@@ -198,7 +192,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
   color: #1e293b;
   font-size: .95rem;
   font-weight: 700;
-  font-family: 'Inter', sans-serif;
   border: none;
   border-radius: 16px;
   cursor: pointer;
@@ -209,7 +202,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
 .google-btn:disabled { opacity: .7; cursor: not-allowed; }
 .google-logo { width: 22px; height: 22px; flex-shrink: 0; }
 
-/* Spinner */
 .spinner {
   width: 22px; height: 22px;
   border: 3px solid #e2e8f0;
@@ -220,7 +212,6 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Error */
 .error-box {
   padding: 12px 16px;
   background: rgba(239,68,68,.15);
@@ -231,11 +222,9 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
   text-align: center;
 }
 
-/* Card note */
 .card-note { font-size: .72rem; color: #475569; text-align: center; line-height: 1.6; }
 .card-link  { color: #60a5fa; text-decoration: underline; }
 
-/* Trust badges */
 .trust-badges { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .badge {
   padding: 6px 14px;
@@ -247,17 +236,7 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
   font-weight: 500;
 }
 
-/* ══════════════════════════════════════
-   MAIN APP (tailwind-like bare utility)
-══════════════════════════════════════ */
-.app-root {
-  display: flex;
-  min-height: 100vh;
-  background: #F9FAFB;
-  font-family: 'Inter', sans-serif;
-}
-
-/* ── Loading screen ── */
+/* Loading screen */
 .loading-screen {
   min-height: 100vh;
   display: flex;
@@ -272,7 +251,7 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
   border-width: 4px;
 }
 
-/* ── Responsive ── */
+/* Responsive */
 @media (max-width: 900px) {
   .login-layout {
     flex-direction: column;
