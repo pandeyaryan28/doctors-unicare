@@ -19,6 +19,7 @@ import {
   Stethoscope,
   Pill,
   FileSearch,
+  ClipboardCheck,
   LogOut
 } from 'lucide-react';
 import { cn, calculateAge, formatDateTime } from './lib/utils';
