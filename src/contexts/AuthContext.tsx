@@ -39,33 +39,41 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const isConfigured = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 
   const fetchDoctorProfile = async (userId: string) => {
-    const { data: existing, error: fetchError } = await supabase
-      .from('doctors')
-      .select('*')
-      .eq('auth_user_id', userId)
-      .single();
+    try {
+      console.log('Fetching doctor profile for:', userId);
+      const { data: existing, error: fetchError } = await supabase
+        .from('doctors')
+        .select('*')
+        .eq('auth_user_id', userId)
+        .single();
 
-    if (existing) {
-      setDoctorProfile(existing);
-    } else if (fetchError || !existing) {
-      // Create profile if it doesn't exist
-      const { data: newUser } = await supabase.auth.getUser();
-      if (newUser?.user) {
-        const { data: created, error: createError } = await supabase
-          .from('doctors')
-          .insert({
-            auth_user_id: userId,
-            full_name: newUser.user.user_metadata.full_name || 'Doctor',
-            email: newUser.user.email || '',
-            avatar_url: newUser.user.user_metadata.avatar_url || null,
-          })
-          .select()
-          .single();
-        
-        if (!createError && created) {
-          setDoctorProfile(created);
+      if (existing) {
+        console.log('Doctor profile found');
+        setDoctorProfile(existing);
+      } else {
+        console.log('No profile found, checking user metadata...');
+        const { data: newUser } = await supabase.auth.getUser();
+        if (newUser?.user) {
+          const { data: created, error: createError } = await supabase
+            .from('doctors')
+            .insert({
+              auth_user_id: userId,
+              full_name: newUser.user.user_metadata.full_name || 'Doctor',
+              email: newUser.user.email || '',
+              avatar_url: newUser.user.user_metadata.avatar_url || null,
+            })
+            .select()
+            .single();
+          
+          if (createError) throw createError;
+          if (created) {
+            console.log('Doctor profile created successfully');
+            setDoctorProfile(created);
+          }
         }
       }
+    } catch (err) {
+      console.error('Error in fetchDoctorProfile:', err);
     }
   };
 
@@ -84,14 +92,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event);
       setSession(session);
       setUser(session?.user ?? null);
+      
       if (session?.user) {
-        await fetchDoctorProfile(session.user.id);
+        // Fetch profile but don't hold up the loading state
+        fetchDoctorProfile(session.user.id);
       } else {
         setDoctorProfile(null);
       }
+      
       setLoading(false);
     });
 
