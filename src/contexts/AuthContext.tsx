@@ -39,13 +39,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const isConfigured = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 
   const fetchDoctorProfile = async (userId: string) => {
-    const { data, error } = await supabase
+    const { data: existing, error: fetchError } = await supabase
       .from('doctors')
       .select('*')
       .eq('auth_user_id', userId)
       .single();
-    if (!error && data) {
-      setDoctorProfile(data);
+
+    if (existing) {
+      setDoctorProfile(existing);
+    } else if (fetchError || !existing) {
+      // Create profile if it doesn't exist
+      const { data: newUser } = await supabase.auth.getUser();
+      if (newUser?.user) {
+        const { data: created, error: createError } = await supabase
+          .from('doctors')
+          .insert({
+            auth_user_id: userId,
+            full_name: newUser.user.user_metadata.full_name || 'Doctor',
+            email: newUser.user.email || '',
+            avatar_url: newUser.user.user_metadata.avatar_url || null,
+          })
+          .select()
+          .single();
+        
+        if (!createError && created) {
+          setDoctorProfile(created);
+        }
+      }
     }
   };
 

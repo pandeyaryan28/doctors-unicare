@@ -24,6 +24,7 @@ import {
 import { cn, calculateAge, formatDateTime } from './lib/utils';
 import { Patient, Consultation, QueueItem, PacketData, Medicine } from './types';
 import { useAuth } from './contexts/AuthContext';
+import { supabase } from './lib/supabase';
 import LoginPage from './pages/LoginPage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -232,7 +233,7 @@ const PrescriptionPDF = (consultation: Consultation, patient: Patient) => {
 };
 
 export default function App() {
-  const { user, loading, isConfigured } = useAuth();
+  const { user, loading, isConfigured, doctorProfile } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -252,27 +253,44 @@ export default function App() {
   const [newMedicine, setNewMedicine] = useState({ name: '', dosage: '', duration: '' });
 
   useEffect(() => {
-    fetchQueue();
-    fetchPatients();
-  }, []);
+    if (doctorProfile) {
+      fetchQueue();
+      fetchPatients();
+    }
+  }, [doctorProfile]);
 
   const fetchQueue = async () => {
+    if (!doctorProfile) return;
     try {
-      const res = await fetch('/api/queue');
-      const data = await res.json();
-      setQueue(data);
+      const { data, error } = await supabase
+        .from('queue')
+        .select(`
+          *,
+          patient:patients(*)
+        `)
+        .eq('doctor_id', doctorProfile.id)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setQueue(data as unknown as QueueItem[]);
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching queue:', err);
     }
   };
 
   const fetchPatients = async () => {
+    if (!doctorProfile) return;
     try {
-      const res = await fetch('/api/patients');
-      const data = await res.json();
-      setPatients(data);
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('doctor_id', doctorProfile.id)
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      setPatients(data as Patient[]);
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching patients:', err);
     }
   };
 
@@ -330,28 +348,39 @@ export default function App() {
       setPacketData(mockPacket);
       
       let patient = patients.find(p => p.phone === mockPacket.profile_data.phone);
+      
       if (!patient) {
-        const res = await fetch('/api/patients', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const { data, error } = await supabase
+          .from('patients')
+          .insert({
+            doctor_id: doctorProfile!.id,
             name: mockPacket.profile_data.name,
             age: calculateAge(mockPacket.profile_data.dob),
             gender: mockPacket.profile_data.gender,
-            phone: mockPacket.profile_data.phone
+            phone: mockPacket.profile_data.phone,
+            email: mockPacket.profile_data.email,
+            abha_id: mockPacket.profile_data.abha_id,
+            address: mockPacket.profile_data.address
           })
-        });
-        patient = await res.json();
+          .select()
+          .single();
+        
+        if (error) throw error;
+        patient = data as Patient;
         fetchPatients();
       }
 
-      await fetch('/api/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patient_id: patient!.id })
-      });
-      fetchQueue();
+      const { error: queueError } = await supabase
+        .from('queue')
+        .insert({
+          doctor_id: doctorProfile!.id,
+          patient_id: patient!.id,
+          status: 'waiting'
+        });
 
+      if (queueError) throw queueError;
+      
+      fetchQueue();
       setSelectedPatient(patient!);
       setActiveTab('consultation');
     } catch (err: any) {
@@ -362,30 +391,47 @@ export default function App() {
   };
 
   const handleSaveConsultation = async () => {
-    if (!selectedPatient) return;
+    if (!selectedPatient || !doctorProfile) return;
     
     try {
-      const res = await fetch('/api/consultations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // 1. Save Consultation
+      const { data, error } = await supabase
+        .from('consultations')
+        .insert({
+          doctor_id: doctorProfile.id,
           patient_id: selectedPatient.id,
-          ...consultationForm
+          symptoms: consultationForm.symptoms,
+          diagnosis: consultationForm.diagnosis,
+          notes: consultationForm.notes,
+          medicines: consultationForm.medicines
         })
-      });
-      const data = await res.json();
+        .select()
+        .single();
       
-      const doc = PrescriptionPDF(data, selectedPatient);
+      if (error) throw error;
+      
+      // 2. Update Queue Status for this patient
+      await supabase
+        .from('queue')
+        .update({ status: 'completed' })
+        .eq('doctor_id', doctorProfile.id)
+        .eq('patient_id', selectedPatient.id)
+        .neq('status', 'completed');
+
+      // 3. Generate and save PDF
+      const doc = PrescriptionPDF(data as Consultation, selectedPatient);
       doc.save(`Prescription_${selectedPatient.name}_${new Date().toLocaleDateString()}.pdf`);
       
+      // 4. Reset State
       setConsultationForm({ symptoms: '', diagnosis: '', notes: '', medicines: [] });
       setSelectedPatient(null);
       setPacketData(null);
       setShowSharedData(false);
       setActiveTab('dashboard');
+      
       fetchQueue();
     } catch (err) {
-      console.error(err);
+      console.error('Error saving consultation:', err);
     }
   };
 
