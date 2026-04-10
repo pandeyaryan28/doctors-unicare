@@ -12,6 +12,14 @@ export const supabase = createClient(
   supabaseAnonKey || 'placeholder'
 );
 
+const patientSupabaseUrl = import.meta.env.VITE_PATIENT_SUPABASE_URL || '';
+const patientSupabaseAnonKey = import.meta.env.VITE_PATIENT_SUPABASE_ANON_KEY || '';
+
+export const patientSupabase = createClient(
+  patientSupabaseUrl || 'https://placeholder.supabase.co',
+  patientSupabaseAnonKey || 'placeholder'
+);
+
 export type Database = {
   public: {
     Tables: {

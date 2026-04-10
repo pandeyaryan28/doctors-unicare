@@ -24,7 +24,7 @@ import {
 import { cn, calculateAge, formatDateTime } from './lib/utils';
 import { Patient, Consultation, QueueItem, PacketData, Medicine } from './types';
 import { useAuth } from './contexts/AuthContext';
-import { supabase } from './lib/supabase';
+import { supabase, patientSupabase } from './lib/supabase';
 import LoginPage from './pages/LoginPage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -116,7 +116,6 @@ const StatCard = ({ label, value, icon: Icon, color }: { label: string, value: s
 
 const QRScanner = ({ onScan }: { onScan: (url: string) => void }) => {
   const [input, setInput] = useState('');
-  const [isScanning, setIsScanning] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,11 +126,11 @@ const QRScanner = ({ onScan }: { onScan: (url: string) => void }) => {
     <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
       <div className="flex items-center gap-4 mb-6">
         <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
-          <QrCode className="w-6 h-6" />
+          <FileSearch className="w-6 h-6" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Scan Patient QR</h2>
-          <p className="text-sm text-gray-500">Scan the patient's secure health packet QR code</p>
+          <h2 className="text-xl font-bold text-gray-900">Import Health Packet</h2>
+          <p className="text-sm text-gray-500">Enter the secure health packet URL shared by the patient</p>
         </div>
       </div>
 
@@ -141,31 +140,10 @@ const QRScanner = ({ onScan }: { onScan: (url: string) => void }) => {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Paste packet URL or scan QR..."
+            placeholder="Paste packet URL here..."
             className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 transition-all text-gray-900 placeholder:text-gray-400"
           />
-          <button 
-            type="button"
-            onClick={() => setIsScanning(!isScanning)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-blue-600 transition-colors"
-          >
-            <QrCode className="w-5 h-5" />
-          </button>
         </div>
-        
-        {isScanning && (
-          <div className="aspect-square bg-gray-900 rounded-2xl flex flex-col items-center justify-center text-white gap-4 overflow-hidden relative">
-            <div className="absolute inset-0 border-2 border-blue-500/50 m-12 rounded-xl animate-pulse" />
-            <Activity className="w-12 h-12 text-blue-400 animate-bounce" />
-            <p className="text-sm font-medium">Camera access requested...</p>
-            <button 
-              onClick={() => setIsScanning(false)}
-              className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors"
-            >
-              Cancel Scan
-            </button>
-          </div>
-        )}
 
         <button
           type="submit"
@@ -298,69 +276,117 @@ export default function App() {
     setScanLoading(true);
     setScanError(null);
     try {
-      // Simulate fetching packet from short-lived link
-      await new Promise(r => setTimeout(r, 1500));
-      
-      const mockPacket: PacketData = {
-        id: "550e8400-e29b-41d1-a716-446655440000",
-        title: "Visit with Dr. Smith - General Checkup",
-        expires_at: new Date(Date.now() + 1000 * 60 * 15).toISOString(),
-        profile_data: {
-          name: "Aryan Pandey",
-          dob: "1998-05-15T00:00:00.000Z",
-          gender: "Male",
-          blood_group: "B+",
-          abha_id: "12-3456-7890-1234",
-          phone: "+91 98765 43210",
-          email: "aryan@example.com",
-          address: "123, Tech Park, Bangalore, India"
-        },
-        medical_history: [
-          {
-            question_id: "past_history",
-            question: "Past medical history",
-            answer: "Diagnosed with hypertension in 2022."
-          },
-          {
-            question_id: "drug_allergies",
-            question: "Drug allergies",
-            answer: "Penicillin"
-          }
-        ],
-        records: [
-          {
-            id: "rec_01",
-            title: "Full Blood Count",
-            date: "2026-03-25T10:30:00.000Z",
-            provider: "City Lab Diagnostics",
-            type: "lab",
-            file_url: "#",
-            file_name: "blood_report.pdf",
-            file_type: "application/pdf"
-          }
-        ]
-      };
-
-      if (new Date(mockPacket.expires_at) < new Date()) {
-        throw new Error("Packet expired, ask patient to regenerate");
+      // 1. Parse packet ID from URL
+      // Example: https://unicare.space/share/packet/cbe5bc29-2e5f-41eb-8e7a-135fb3cbace3
+      const packetId = url.split('/').pop();
+      if (!packetId || packetId.length < 36) {
+        throw new Error("Invalid health packet URL");
       }
 
-      setPacketData(mockPacket);
+      // 2. Fetch packet basics
+      const { data: packet, error: packetError } = await patientSupabase
+        .from('shared_packets')
+        .select('*')
+        .eq('id', packetId)
+        .single();
+
+      if (packetError || !packet) throw new Error("Health packet not found or inaccessible");
+
+      // Check expiry
+      if (packet.expires_at && new Date(packet.expires_at) < new Date()) {
+        throw new Error("Health packet has expired");
+      }
+
+      // 3. Fetch Profile
+      const { data: profile, error: profileError } = await patientSupabase
+        .from('profiles')
+        .select('*')
+        .eq('id', packet.profile_id)
+        .single();
+
+      if (profileError || !profile) throw new Error("Patient profile not found");
+
+      // 4. Fetch Medical History (if shared)
+      let medicalHistory: any[] = [];
+      if (packet.share_medical_history) {
+        const { data: history } = await patientSupabase
+          .from('medical_history')
+          .select('*')
+          .eq('profile_id', profile.id);
+        medicalHistory = history || [];
+      }
+
+      // 5. Fetch Records
+      const { data: recordLinks } = await patientSupabase
+        .from('shared_packet_records')
+        .select('record_id')
+        .eq('packet_id', packetId);
       
-      let patient = patients.find(p => p.phone === mockPacket.profile_data.phone);
+      let records: any[] = [];
+      if (recordLinks && recordLinks.length > 0) {
+        const recordIds = recordLinks.map((l: any) => l.record_id);
+        const { data: recordsData } = await patientSupabase
+          .from('records')
+          .select('*')
+          .in('id', recordIds);
+        records = recordsData || [];
+      }
+
+      // 6. Map to local PacketData structure
+      const fetchedPacket: PacketData = {
+        id: packet.id,
+        title: packet.title || "Health Packet",
+        expires_at: packet.expires_at || "",
+        profile_data: {
+          name: profile.name,
+          dob: profile.dob,
+          gender: profile.gender || "Not specified",
+          blood_group: profile.blood_group || "Unknown",
+          abha_id: profile.abha_id || "",
+          phone: profile.phone || "",
+          email: profile.email || "",
+          address: profile.address || ""
+        },
+        medical_history: medicalHistory.map(h => ({
+          question_id: h.question_id,
+          question: h.question_id.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+          answer: h.answer
+        })),
+        records: records.map(r => ({
+          id: r.id,
+          title: r.title,
+          date: r.date,
+          provider: r.provider,
+          type: r.type,
+          file_url: r.file_url,
+          file_name: r.file_name,
+          file_type: r.file_type
+        }))
+      };
+
+      setPacketData(fetchedPacket);
+      
+      // Look for patient in doctor's project by phone or name (fallback)
+      const patientPhone = fetchedPacket.profile_data.phone;
+      const patientName = fetchedPacket.profile_data.name;
+      
+      let patient = patients.find(p => 
+        (patientPhone && p.phone === patientPhone) || 
+        (!patientPhone && p.name === patientName)
+      );
       
       if (!patient) {
         const { data, error } = await supabase
           .from('patients')
           .insert({
             doctor_id: doctorProfile!.id,
-            name: mockPacket.profile_data.name,
-            age: calculateAge(mockPacket.profile_data.dob),
-            gender: mockPacket.profile_data.gender,
-            phone: mockPacket.profile_data.phone,
-            email: mockPacket.profile_data.email,
-            abha_id: mockPacket.profile_data.abha_id,
-            address: mockPacket.profile_data.address
+            name: patientName,
+            age: profile.dob ? calculateAge(profile.dob) : 0,
+            gender: fetchedPacket.profile_data.gender,
+            phone: patientPhone,
+            email: fetchedPacket.profile_data.email,
+            abha_id: fetchedPacket.profile_data.abha_id,
+            address: fetchedPacket.profile_data.address
           })
           .select()
           .single();
