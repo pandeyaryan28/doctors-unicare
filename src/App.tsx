@@ -56,25 +56,25 @@ const PatientRecordView = ({
         </div>
 
         {/* Patient Identity */}
-        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex items-start gap-8">
-          <div className="w-24 h-24 bg-blue-100 rounded-3xl flex items-center justify-center text-blue-600">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-start gap-8">
+          <div className="w-24 h-24 bg-blue-100 dark:bg-blue-900/40 rounded-3xl flex items-center justify-center text-blue-600 dark:text-blue-400">
             <Users className="w-10 h-10" />
           </div>
           <div className="flex-1 grid grid-cols-2 gap-y-4 gap-x-8">
             <div className="col-span-2">
-              <h1 className="text-3xl font-bold text-gray-900">{packet.profile_data.name}</h1>
-              <p className="text-gray-500 flex items-center gap-2 mt-1">
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{packet.profile_data.name}</h1>
+              <p className="text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-1">
                 <Calendar className="w-4 h-4" />
                 {packet.profile_data.dob ? `${calculateAge(packet.profile_data.dob)} years • ${formatDateTime(packet.profile_data.dob)}` : 'Age unknown'}
               </p>
             </div>
             <div>
-              <p className="text-xs font-bold text-gray-400 uppercase">Gender</p>
-              <p className="font-semibold text-gray-900">{packet.profile_data.gender}</p>
+              <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">Gender</p>
+              <p className="font-semibold text-gray-900 dark:text-white">{packet.profile_data.gender}</p>
             </div>
             <div>
-              <p className="text-xs font-bold text-gray-400 uppercase">Blood Group</p>
-              <p className="font-semibold text-gray-900 text-red-600">{packet.profile_data.blood_group}</p>
+              <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">Blood Group</p>
+              <p className="font-semibold text-gray-900 dark:text-white text-red-600 dark:text-red-400">{packet.profile_data.blood_group}</p>
             </div>
           </div>
         </div>
@@ -82,15 +82,15 @@ const PatientRecordView = ({
         {/* Medical History */}
         {packet.medical_history.length > 0 && (
           <div className="space-y-4">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <ClipboardCheck className="w-5 h-5 text-blue-600" />
               Medical History
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {packet.medical_history.map((h, i) => (
-                <div key={i} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-                  <p className="text-xs font-bold text-gray-400 uppercase mb-2">{h.question}</p>
-                  <p className="text-gray-900">{h.answer || 'No response provided'}</p>
+                <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm">
+                  <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2">{h.question}</p>
+                  <p className="text-gray-900 dark:text-gray-100">{h.answer || 'No response provided'}</p>
                 </div>
               ))}
             </div>
@@ -142,8 +142,8 @@ const PatientRecordView = ({
 const MediaPreviewModal = ({ record, onClose }: { record: any, onClose: () => void }) => {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 md:p-12">
-      <div className="bg-white w-full h-full rounded-3xl overflow-hidden flex flex-col shadow-2xl">
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="bg-white dark:bg-slate-900 w-full h-full rounded-3xl overflow-hidden flex flex-col shadow-2xl transition-colors duration-300">
+        <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
               <FileText className="w-5 h-5" />
@@ -210,19 +210,19 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
     : 'DR';
 
   return (
-    <div className="w-64 bg-white border-r border-gray-100 flex flex-col h-screen sticky top-0">
+    <div className="w-64 bg-white dark:bg-slate-900 border-r border-gray-100 dark:border-slate-800 flex flex-col h-screen sticky top-0 transition-colors duration-300">
       <div className="p-6 flex items-center gap-3">
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200 dark:shadow-none">
           <Stethoscope className="text-white w-6 h-6" />
         </div>
         <div>
-          <h1 className="font-bold text-gray-900 leading-tight">UniCare</h1>
-          <p className="text-[10px] font-bold text-blue-600 tracking-widest uppercase">EMR Portal</p>
+          <h1 className="font-bold text-gray-900 dark:text-white leading-tight">UniCare</h1>
+          <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 tracking-widest uppercase">EMR Portal</p>
         </div>
       </div>
 
       <nav className="flex-1 px-4 py-4 space-y-1">
-        <p className="px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Main Menu</p>
+        <p className="px-4 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">Main Menu</p>
         {menuItems.map((item) => (
           <button
             key={item.id}
@@ -230,33 +230,33 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
             className={cn(
               "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
               activeTab === item.id 
-                ? "bg-blue-600 text-white shadow-md shadow-blue-100" 
-                : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                ? "bg-blue-600 text-white shadow-md shadow-blue-100 dark:shadow-none" 
+                : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white"
             )}
           >
-            <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-gray-400 group-hover:text-gray-600")} />
+            <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300")} />
             <span className="font-medium">{item.label}</span>
           </button>
         ))}
       </nav>
 
-      <div className="p-4 mt-auto border-t border-gray-50 space-y-2">
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50">
+      <div className="p-4 mt-auto border-t border-gray-50 dark:border-slate-800 space-y-2">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 dark:bg-slate-800/50">
           {doctorProfile?.avatar_url ? (
             <img src={doctorProfile.avatar_url} alt="avatar" className="w-8 h-8 rounded-full object-cover" />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+            <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-300 font-bold text-xs">
               {initials}
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 truncate">{doctorProfile?.full_name || 'Doctor'}</p>
-            <p className="text-[10px] text-gray-500 truncate">{doctorProfile?.specialty || 'General Physician'}</p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{doctorProfile?.full_name || 'Doctor'}</p>
+            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{doctorProfile?.specialty || 'General Physician'}</p>
           </div>
         </div>
         <button
           onClick={signOut}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all text-sm font-medium"
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-all text-sm font-medium"
         >
           <LogOut className="w-4 h-4" />
           Sign Out
@@ -267,15 +267,15 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
 };
 
 const StatCard = ({ label, value, icon: Icon, color }: { label: string, value: string | number, icon: any, color: string }) => (
-  <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+  <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300">
     <div className="flex items-center justify-between mb-4">
-      <div className={cn("p-3 rounded-2xl", color)}>
+      <div className={cn("p-3 rounded-2xl", color, "dark:bg-opacity-20")}>
         <Icon className="w-6 h-6" />
       </div>
-      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Today</span>
+      <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Today</span>
     </div>
-    <h3 className="text-3xl font-bold text-gray-900">{value}</h3>
-    <p className="text-sm text-gray-500 mt-1">{label}</p>
+    <h3 className="text-3xl font-bold text-gray-900 dark:text-white transition-colors">{value}</h3>
+    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{label}</p>
   </div>
 );
 
@@ -288,14 +288,14 @@ const QRScanner = ({ onScan }: { onScan: (url: string) => void }) => {
   };
 
   return (
-    <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-300">
       <div className="flex items-center gap-4 mb-6">
-        <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
+        <div className="p-3 bg-blue-50 dark:bg-blue-900/40 rounded-2xl text-blue-600 dark:text-blue-400">
           <FileSearch className="w-6 h-6" />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Import Health Packet</h2>
-          <p className="text-sm text-gray-500">Enter the secure health packet URL shared by the patient</p>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Import Health Packet</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Enter the secure health packet URL shared by the patient</p>
         </div>
       </div>
 
@@ -306,7 +306,7 @@ const QRScanner = ({ onScan }: { onScan: (url: string) => void }) => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Paste packet URL here..."
-            className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 transition-all text-gray-900 placeholder:text-gray-400"
+            className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600 transition-all text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
         </div>
 
@@ -448,6 +448,17 @@ const PrescriptionPDF = (consultation: Consultation, patient: Patient) => {
 
 export default function App() {
   const { user, loading, isConfigured, doctorProfile } = useAuth();
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -784,7 +795,14 @@ export default function App() {
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <button className="p-3 bg-white border border-gray-100 rounded-2xl text-gray-400 hover:text-gray-600 transition-colors relative">
+            <button 
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-gray-400 dark:text-gray-300 hover:text-blue-600 transition-all shadow-sm"
+              title="Toggle Theme"
+            >
+              {darkMode ? <Plus className="w-5 h-5 rotate-45" /> : <Clock className="w-5 h-5" />}
+            </button>
+            <button className="p-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-gray-400 dark:text-gray-300 hover:text-gray-600 transition-colors relative">
               <Bell className="w-5 h-5" />
               <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
             </button>
@@ -814,26 +832,28 @@ export default function App() {
                 <StatCard label="Completed" value={queue.filter(q => q.status === 'completed').length} icon={CheckCircle2} color="bg-green-50 text-green-600" />
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <QRScanner onScan={handleQRScan} />
-                <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-300">
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-bold text-gray-900">Live Queue</h3>
-                    <button onClick={() => setActiveTab('queue')} className="text-sm font-bold text-blue-600 hover:underline">View All</button>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Queue</h3>
+                    <button onClick={() => setActiveTab('queue')} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline">View All</button>
                   </div>
                   <div className="space-y-4">
                     {queue.filter(q => q.status !== 'completed').slice(0, 4).map((item) => (
-                      <div key={item.id} className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 group hover:bg-blue-50 transition-colors">
-                        <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center text-blue-600 font-bold border border-gray-100">
+                      <div key={item.id} className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 dark:bg-slate-800/40 group hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                        <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-800 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold border border-gray-100 dark:border-slate-700">
                           {item.patient?.name.charAt(0)}
                         </div>
                         <div className="flex-1">
-                          <p className="font-bold text-gray-900">{item.patient?.name}</p>
-                          <p className="text-xs text-gray-500">{item.patient?.gender} • {item.patient?.age}Y</p>
+                          <p className="font-bold text-gray-900 dark:text-white truncate">{item.patient?.name}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{item.patient?.gender} • {item.patient?.age}Y</p>
                         </div>
                         <div className={cn(
                           "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                          item.status === 'waiting' ? "bg-orange-100 text-orange-600" : "bg-blue-100 text-blue-600"
+                          item.status === 'waiting' 
+                            ? "bg-orange-100 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400" 
+                            : "bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400"
                         )}>
                           {item.status}
                         </div>
@@ -842,7 +862,7 @@ export default function App() {
                             setSelectedPatient(item.patient!);
                             setActiveTab('consultation');
                           }}
-                          className="p-2 text-gray-400 group-hover:text-blue-600 transition-colors"
+                          className="p-2 text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                         >
                           <ChevronRight className="w-5 h-5" />
                         </button>
@@ -875,14 +895,14 @@ export default function App() {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="space-y-6">
                   {/* Patient Quick Info */}
-                  <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm overflow-hidden group">
+                  <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden group">
                     <div className="flex items-center gap-4 mb-6">
-                      <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold text-xl uppercase">
+                      <div className="w-14 h-14 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center font-bold text-xl uppercase">
                         {selectedPatient.name[0]}
                       </div>
                       <div>
-                        <h3 className="font-bold text-gray-900">{selectedPatient.name}</h3>
-                        <p className="text-xs text-gray-500">ID: #{selectedPatient.id.slice(0, 8)}</p>
+                        <h3 className="font-bold text-gray-900 dark:text-white">{selectedPatient.name}</h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">ID: #{selectedPatient.id.slice(0, 8)}</p>
                       </div>
                     </div>
                     
@@ -892,19 +912,19 @@ export default function App() {
                         { label: 'Blood Group', value: 'B+ Positive', icon: Activity },
                         { label: 'Last Visit', value: '12 Oct 2023', icon: Calendar },
                       ].map((item, i) => (
-                        <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-gray-50/50 group-hover:bg-gray-50 transition-colors">
+                        <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-gray-50/50 dark:bg-slate-800/50 group-hover:bg-gray-50 dark:group-hover:bg-slate-800 transition-colors">
                           <div className="flex items-center gap-3">
-                            <item.icon className="w-4 h-4 text-gray-400" />
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{item.label}</span>
+                            <item.icon className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-tighter">{item.label}</span>
                           </div>
-                          <span className="text-xs font-bold text-gray-900">{item.value}</span>
+                          <span className="text-xs font-bold text-gray-900 dark:text-white">{item.value}</span>
                         </div>
                       ))}
                     </div>
 
                     <button 
                       onClick={() => setActiveTab('record-view')}
-                      className="w-full mt-6 py-4 bg-white border-2 border-blue-600 text-blue-600 rounded-2xl text-xs font-bold hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-2"
+                      className="w-full mt-6 py-4 bg-white dark:bg-slate-900 border-2 border-blue-600 text-blue-600 dark:text-blue-400 rounded-2xl text-xs font-bold hover:bg-blue-600 hover:text-white transition-all flex items-center justify-center gap-2"
                     >
                       <FileSearch className="w-4 h-4" />
                       Expand Full Records
@@ -926,14 +946,14 @@ export default function App() {
                 </div>
 
                 <div className="lg:col-span-2 space-y-6">
-                  <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm overflow-hidden relative">
+                  <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden relative">
                     <div className="absolute top-0 left-0 w-2 h-full bg-blue-600" />
                     <div className="flex items-center justify-between mb-8">
                       <div>
-                        <h3 className="text-xl font-bold text-gray-900">Clinical Evaluation</h3>
-                        <p className="text-sm text-gray-500">Record symptoms, diagnosis and treatment plan</p>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white">Clinical Evaluation</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Record symptoms, diagnosis and treatment plan</p>
                       </div>
-                      <div className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
+                      <div className="px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-[10px] font-bold uppercase tracking-widest">
                         Session Active
                       </div>
                     </div>
@@ -976,7 +996,7 @@ export default function App() {
                                 placeholder="Medicine Name"
                                 value={newMedicine.name}
                                 onChange={(e) => setNewMedicine(prev => ({ ...prev, name: e.target.value }))}
-                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white dark:placeholder:text-gray-500"
                               />
                             </div>
                             <div className="md:col-span-3">
@@ -985,7 +1005,7 @@ export default function App() {
                                 placeholder="e.g. 1-0-1"
                                 value={newMedicine.dosage}
                                 onChange={(e) => setNewMedicine(prev => ({ ...prev, dosage: e.target.value }))}
-                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white dark:placeholder:text-gray-500"
                               />
                             </div>
                             <div className="md:col-span-3">
@@ -994,7 +1014,7 @@ export default function App() {
                                 placeholder="Duration"
                                 value={newMedicine.duration}
                                 onChange={(e) => setNewMedicine(prev => ({ ...prev, duration: e.target.value }))}
-                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white dark:placeholder:text-gray-500"
                               />
                             </div>
                             <div className="md:col-span-1">
@@ -1015,16 +1035,16 @@ export default function App() {
                                   initial={{ opacity: 0, x: -10 }}
                                   animate={{ opacity: 1, x: 0 }}
                                   key={i} 
-                                  className="flex items-center gap-4 p-3 bg-white rounded-xl border border-gray-100 group shadow-sm"
+                                  className="flex items-center gap-4 p-3 bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-800 group shadow-sm transition-colors"
                                 >
-                                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                                    <Pill className="w-4 h-4 text-blue-600" />
+                                  <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/40 flex items-center justify-center">
+                                    <Pill className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                                   </div>
                                   <div className="flex-1">
-                                    <p className="text-sm font-bold text-gray-900 uppercase tracking-tight">{med.name}</p>
-                                    <p className="text-[10px] text-gray-500 font-medium">{med.dosage} • {med.duration}</p>
+                                    <p className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-tight">{med.name}</p>
+                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{med.dosage} • {med.duration}</p>
                                   </div>
-                                  <button onClick={() => removeMedicine(i)} className="p-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                  <button onClick={() => removeMedicine(i)} className="p-2 text-gray-300 dark:text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
                                     <Trash2 className="w-4 h-4" />
                                   </button>
                                 </motion.div>
