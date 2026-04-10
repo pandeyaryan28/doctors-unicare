@@ -1,0 +1,62 @@
+export interface Patient {
+  id: string;
+  name: string;
+  age: number;
+  gender: string;
+  phone: string;
+}
+
+export interface Consultation {
+  id: string;
+  patient_id: string;
+  symptoms: string;
+  diagnosis: string;
+  notes: string;
+  medicines: Medicine[];
+  created_at: string;
+}
+
+export interface Medicine {
+  name: string;
+  dosage: string;
+  duration: string;
+}
+
+export interface QueueItem {
+  id: string;
+  patient_id: string;
+  status: 'waiting' | 'in-consultation' | 'completed';
+  time: string;
+  patient?: Patient;
+}
+
+export interface PacketData {
+  id: string;
+  title: string;
+  expires_at: string;
+  profile_data: {
+    name: string;
+    dob: string;
+    gender: string;
+    blood_group: string;
+    abha_id: string;
+    phone: string;
+    email: string;
+    address: string;
+  };
+  medical_history: {
+    question_id: string;
+    question: string;
+    answer: string;
+  }[];
+  records: {
+    id: string;
+    title: string;
+    date: string;
+    provider: string;
+    type: string;
+    file_url: string;
+    file_name: string;
+    file_type: string;
+  }[];
+}

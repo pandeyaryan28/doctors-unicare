@@ -1,0 +1,706 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  LayoutDashboard, 
+  Users, 
+  Clock, 
+  History, 
+  QrCode, 
+  Search, 
+  Bell, 
+  Plus,
+  ChevronRight,
+  Activity,
+  FileText,
+  User,
+  Calendar,
+  Download,
+  Share2,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  ArrowLeft,
+  Stethoscope,
+  Pill,
+  FileSearch
+} from 'lucide-react';
+import { cn, calculateAge, formatDateTime } from './lib/utils';
+import { Patient, Consultation, QueueItem, PacketData, Medicine } from './types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+// --- Components ---
+
+const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab: (tab: string) => void }) => {
+  const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'patients', label: 'Patients', icon: Users },
+    { id: 'queue', label: 'Queue', icon: Clock },
+    { id: 'consultations', label: 'Consultations', icon: History },
+  ];
+
+  return (
+    <div className="w-64 bg-white border-r border-gray-100 flex flex-col h-screen sticky top-0">
+      <div className="p-6 flex items-center gap-3">
+        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+          <Stethoscope className="text-white w-6 h-6" />
+        </div>
+        <div>
+          <h1 className="font-bold text-gray-900 leading-tight">UniCare</h1>
+          <p className="text-[10px] font-bold text-blue-600 tracking-widest uppercase">EMR Portal</p>
+        </div>
+      </div>
+
+      <nav className="flex-1 px-4 py-4 space-y-1">
+        <p className="px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Main Menu</p>
+        {menuItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={cn(
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
+              activeTab === item.id 
+                ? "bg-blue-600 text-white shadow-md shadow-blue-100" 
+                : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+            )}
+          >
+            <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-gray-400 group-hover:text-gray-600")} />
+            <span className="font-medium">{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div className="p-4 mt-auto border-t border-gray-50">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50">
+          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+            DR
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900 truncate">Dr. Aryan Pandey</p>
+            <p className="text-[10px] text-gray-500 truncate">General Physician</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StatCard = ({ label, value, icon: Icon, color }: { label: string, value: string | number, icon: any, color: string }) => (
+  <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+    <div className="flex items-center justify-between mb-4">
+      <div className={cn("p-3 rounded-2xl", color)}>
+        <Icon className="w-6 h-6" />
+      </div>
+      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Today</span>
+    </div>
+    <h3 className="text-3xl font-bold text-gray-900">{value}</h3>
+    <p className="text-sm text-gray-500 mt-1">{label}</p>
+  </div>
+);
+
+const QRScanner = ({ onScan }: { onScan: (url: string) => void }) => {
+  const [input, setInput] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input) onScan(input);
+  };
+
+  return (
+    <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+      <div className="flex items-center gap-4 mb-6">
+        <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
+          <QrCode className="w-6 h-6" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Scan Patient QR</h2>
+          <p className="text-sm text-gray-500">Scan the patient's secure health packet QR code</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="relative">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Paste packet URL or scan QR..."
+            className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 transition-all text-gray-900 placeholder:text-gray-400"
+          />
+          <button 
+            type="button"
+            onClick={() => setIsScanning(!isScanning)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-blue-600 transition-colors"
+          >
+            <QrCode className="w-5 h-5" />
+          </button>
+        </div>
+        
+        {isScanning && (
+          <div className="aspect-square bg-gray-900 rounded-2xl flex flex-col items-center justify-center text-white gap-4 overflow-hidden relative">
+            <div className="absolute inset-0 border-2 border-blue-500/50 m-12 rounded-xl animate-pulse" />
+            <Activity className="w-12 h-12 text-blue-400 animate-bounce" />
+            <p className="text-sm font-medium">Camera access requested...</p>
+            <button 
+              onClick={() => setIsScanning(false)}
+              className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors"
+            >
+              Cancel Scan
+            </button>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={!input}
+          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all disabled:opacity-50 disabled:shadow-none"
+        >
+          Access Health Packet
+        </button>
+      </form>
+    </div>
+  );
+};
+
+const PrescriptionPDF = (consultation: Consultation, patient: Patient) => {
+  const doc = new jsPDF();
+  
+  // Header
+  doc.setFontSize(22);
+  doc.setTextColor(0, 102, 255);
+  doc.text('UniCare EMR', 20, 20);
+  
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text('Dr. Aryan Pandey | General Physician', 20, 28);
+  doc.text('Reg No: 123456789', 20, 33);
+  
+  doc.setDrawColor(230);
+  doc.line(20, 40, 190, 40);
+  
+  // Patient Info
+  doc.setFontSize(12);
+  doc.setTextColor(0);
+  doc.text(`Patient: ${patient.name}`, 20, 50);
+  doc.text(`Age/Gender: ${patient.age}Y / ${patient.gender}`, 20, 57);
+  doc.text(`Date: ${new Date(consultation.created_at).toLocaleDateString()}`, 140, 50);
+  
+  // Clinical Notes
+  doc.setFontSize(14);
+  doc.text('Clinical Findings', 20, 75);
+  doc.setFontSize(10);
+  doc.text(`Symptoms: ${consultation.symptoms}`, 20, 85);
+  doc.text(`Diagnosis: ${consultation.diagnosis}`, 20, 92);
+  
+  // Prescription
+  doc.setFontSize(14);
+  doc.text('Prescription', 20, 110);
+  
+  autoTable(doc, {
+    startY: 115,
+    head: [['Medicine', 'Dosage', 'Duration']],
+    body: consultation.medicines.map(m => [m.name, m.dosage, m.duration]),
+    theme: 'striped',
+    headStyles: { fillColor: [0, 102, 255] }
+  });
+  
+  // Footer
+  const finalY = (doc as any).lastAutoTable.finalY + 20;
+  doc.setFontSize(10);
+  doc.text('Notes:', 20, finalY);
+  doc.text(consultation.notes, 20, finalY + 7);
+  
+  doc.text('Digitally Signed by Dr. Aryan Pandey', 120, finalY + 40);
+  
+  return doc;
+};
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [packetData, setPacketData] = useState<PacketData | null>(null);
+  const [showSharedData, setShowSharedData] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Consultation Form State
+  const [consultationForm, setConsultationForm] = useState({
+    symptoms: '',
+    diagnosis: '',
+    notes: '',
+    medicines: [] as Medicine[]
+  });
+  const [newMedicine, setNewMedicine] = useState({ name: '', dosage: '', duration: '' });
+
+  useEffect(() => {
+    fetchQueue();
+    fetchPatients();
+  }, []);
+
+  const fetchQueue = async () => {
+    try {
+      const res = await fetch('/api/queue');
+      const data = await res.json();
+      setQueue(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchPatients = async () => {
+    try {
+      const res = await fetch('/api/patients');
+      const data = await res.json();
+      setPatients(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleQRScan = async (url: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Simulate fetching packet from short-lived link
+      await new Promise(r => setTimeout(r, 1500));
+      
+      const mockPacket: PacketData = {
+        id: "550e8400-e29b-41d1-a716-446655440000",
+        title: "Visit with Dr. Smith - General Checkup",
+        expires_at: new Date(Date.now() + 1000 * 60 * 15).toISOString(),
+        profile_data: {
+          name: "Aryan Pandey",
+          dob: "1998-05-15T00:00:00.000Z",
+          gender: "Male",
+          blood_group: "B+",
+          abha_id: "12-3456-7890-1234",
+          phone: "+91 98765 43210",
+          email: "aryan@example.com",
+          address: "123, Tech Park, Bangalore, India"
+        },
+        medical_history: [
+          {
+            question_id: "past_history",
+            question: "Past medical history",
+            answer: "Diagnosed with hypertension in 2022."
+          },
+          {
+            question_id: "drug_allergies",
+            question: "Drug allergies",
+            answer: "Penicillin"
+          }
+        ],
+        records: [
+          {
+            id: "rec_01",
+            title: "Full Blood Count",
+            date: "2026-03-25T10:30:00.000Z",
+            provider: "City Lab Diagnostics",
+            type: "lab",
+            file_url: "#",
+            file_name: "blood_report.pdf",
+            file_type: "application/pdf"
+          }
+        ]
+      };
+
+      if (new Date(mockPacket.expires_at) < new Date()) {
+        throw new Error("Packet expired, ask patient to regenerate");
+      }
+
+      setPacketData(mockPacket);
+      
+      let patient = patients.find(p => p.phone === mockPacket.profile_data.phone);
+      if (!patient) {
+        const res = await fetch('/api/patients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: mockPacket.profile_data.name,
+            age: calculateAge(mockPacket.profile_data.dob),
+            gender: mockPacket.profile_data.gender,
+            phone: mockPacket.profile_data.phone
+          })
+        });
+        patient = await res.json();
+        fetchPatients();
+      }
+
+      await fetch('/api/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_id: patient!.id })
+      });
+      fetchQueue();
+
+      setSelectedPatient(patient!);
+      setActiveTab('consultation');
+    } catch (err: any) {
+      setError(err.message || "Invalid link or network error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveConsultation = async () => {
+    if (!selectedPatient) return;
+    
+    try {
+      const res = await fetch('/api/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_id: selectedPatient.id,
+          ...consultationForm
+        })
+      });
+      const data = await res.json();
+      
+      const doc = PrescriptionPDF(data, selectedPatient);
+      doc.save(`Prescription_${selectedPatient.name}_${new Date().toLocaleDateString()}.pdf`);
+      
+      setConsultationForm({ symptoms: '', diagnosis: '', notes: '', medicines: [] });
+      setSelectedPatient(null);
+      setPacketData(null);
+      setShowSharedData(false);
+      setActiveTab('dashboard');
+      fetchQueue();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const addMedicine = () => {
+    if (newMedicine.name) {
+      setConsultationForm(prev => ({
+        ...prev,
+        medicines: [...prev.medicines, newMedicine]
+      }));
+      setNewMedicine({ name: '', dosage: '', duration: '' });
+    }
+  };
+
+  const removeMedicine = (index: number) => {
+    setConsultationForm(prev => ({
+      ...prev,
+      medicines: prev.medicines.filter((_, i) => i !== index)
+    }));
+  };
+
+  return (
+    <div className="flex min-h-screen bg-[#F9FAFB]">
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      
+      <main className="flex-1 p-8 overflow-y-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 capitalize">
+              {activeTab.replace('-', ' ')}
+            </h2>
+            <p className="text-sm text-gray-500">
+              {activeTab === 'dashboard' ? 'Good morning, Dr. Aryan. Here is your clinic overview.' : 
+               activeTab === 'patients' ? 'Manage permanent patient records.' :
+               activeTab === 'queue' ? 'Track patients waiting for consultation.' : 'Complete the clinical record.'}
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <button className="p-3 bg-white border border-gray-100 rounded-2xl text-gray-400 hover:text-gray-600 transition-colors relative">
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+            </button>
+            <div className="h-10 w-[1px] bg-gray-200 mx-2" />
+            <button 
+              onClick={() => setActiveTab('dashboard')}
+              className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              New Consultation
+            </button>
+          </div>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {activeTab === 'dashboard' && (
+            <motion.div 
+              key="dashboard"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-8"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <StatCard label="Total Patients" value={patients.length} icon={Users} color="bg-blue-50 text-blue-600" />
+                <StatCard label="In Queue" value={queue.filter(q => q.status !== 'completed').length} icon={Clock} color="bg-orange-50 text-orange-600" />
+                <StatCard label="Completed" value={queue.filter(q => q.status === 'completed').length} icon={CheckCircle2} color="bg-green-50 text-green-600" />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <QRScanner onScan={handleQRScan} />
+                <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900">Live Queue</h3>
+                    <button onClick={() => setActiveTab('queue')} className="text-sm font-bold text-blue-600 hover:underline">View All</button>
+                  </div>
+                  <div className="space-y-4">
+                    {queue.filter(q => q.status !== 'completed').slice(0, 4).map((item) => (
+                      <div key={item.id} className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 group hover:bg-blue-50 transition-colors">
+                        <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center text-blue-600 font-bold border border-gray-100">
+                          {item.patient?.name.charAt(0)}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold text-gray-900">{item.patient?.name}</p>
+                          <p className="text-xs text-gray-500">{item.patient?.gender} • {item.patient?.age}Y</p>
+                        </div>
+                        <div className={cn(
+                          "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                          item.status === 'waiting' ? "bg-orange-100 text-orange-600" : "bg-blue-100 text-blue-600"
+                        )}>
+                          {item.status}
+                        </div>
+                        <button 
+                          onClick={() => {
+                            setSelectedPatient(item.patient!);
+                            setActiveTab('consultation');
+                          }}
+                          className="p-2 text-gray-400 group-hover:text-blue-600 transition-colors"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'consultation' && selectedPatient && (
+            <motion.div 
+              key="consultation"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="space-y-8"
+            >
+              <button 
+                onClick={() => {
+                  setSelectedPatient(null);
+                  setActiveTab('dashboard');
+                }}
+                className="flex items-center gap-2 text-gray-500 hover:text-gray-900 font-medium transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Dashboard
+              </button>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-1 space-y-6">
+                  <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+                    <div className="flex flex-col items-center text-center mb-6">
+                      <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center text-blue-600 font-bold text-2xl mb-4 border border-blue-100">
+                        {selectedPatient.name.charAt(0)}
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900">{selectedPatient.name}</h3>
+                      <p className="text-sm text-gray-500">{selectedPatient.gender} • {selectedPatient.age} Years</p>
+                    </div>
+                    <div className="space-y-4 pt-6 border-t border-gray-50">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-400 uppercase">Phone</span>
+                        <span className="text-sm font-medium text-gray-900">{selectedPatient.phone}</span>
+                      </div>
+                    </div>
+                    {packetData && (
+                      <div className="mt-8 pt-8 border-t border-gray-50">
+                        <button 
+                          onClick={() => setShowSharedData(!showSharedData)}
+                          className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-800 transition-all"
+                        >
+                          <FileSearch className="w-5 h-5" />
+                          {showSharedData ? 'Hide Records' : 'View Shared Records'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {showSharedData && packetData && (
+                    <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Medical History</h4>
+                        <div className="space-y-4">
+                          {packetData.medical_history.map((item, i) => (
+                            <div key={i} className="p-4 bg-gray-50 rounded-2xl">
+                              <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">{item.question}</p>
+                              <p className="text-sm text-gray-900 font-medium">{item.answer}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Health Records</h4>
+                        <div className="space-y-3">
+                          {packetData.records.map((record) => (
+                            <div key={record.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100">
+                              <FileText className="w-5 h-5 text-gray-400" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-gray-900 truncate">{record.title}</p>
+                                <p className="text-[10px] text-gray-500">{record.provider}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="lg:col-span-2 space-y-6">
+                  <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+                    <h3 className="text-xl font-bold text-gray-900 mb-6">Clinical Record</h3>
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <textarea 
+                          value={consultationForm.symptoms}
+                          onChange={(e) => setConsultationForm(prev => ({ ...prev, symptoms: e.target.value }))}
+                          placeholder="Symptoms..."
+                          className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                        />
+                        <textarea 
+                          value={consultationForm.diagnosis}
+                          onChange={(e) => setConsultationForm(prev => ({ ...prev, diagnosis: e.target.value }))}
+                          placeholder="Diagnosis..."
+                          className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+                        />
+                      </div>
+                      <div className="bg-gray-50 p-6 rounded-2xl space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                          <input 
+                            type="text" 
+                            placeholder="Medicine"
+                            value={newMedicine.name}
+                            onChange={(e) => setNewMedicine(prev => ({ ...prev, name: e.target.value }))}
+                            className="md:col-span-2 px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm"
+                          />
+                          <input 
+                            type="text" 
+                            placeholder="Dosage"
+                            value={newMedicine.dosage}
+                            onChange={(e) => setNewMedicine(prev => ({ ...prev, dosage: e.target.value }))}
+                            className="px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <input 
+                              type="text" 
+                              placeholder="Days"
+                              value={newMedicine.duration}
+                              onChange={(e) => setNewMedicine(prev => ({ ...prev, duration: e.target.value }))}
+                              className="flex-1 px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm"
+                            />
+                            <button onClick={addMedicine} className="p-3 bg-blue-600 text-white rounded-xl"><Plus className="w-5 h-5" /></button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          {consultationForm.medicines.map((med, i) => (
+                            <div key={i} className="flex items-center gap-4 p-3 bg-white rounded-xl border border-gray-100">
+                              <Pill className="w-4 h-4 text-blue-600" />
+                              <div className="flex-1">
+                                <p className="text-sm font-bold text-gray-900">{med.name}</p>
+                                <p className="text-[10px] text-gray-500">{med.dosage} • {med.duration}</p>
+                              </div>
+                              <button onClick={() => removeMedicine(i)} className="text-gray-300 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <textarea 
+                        value={consultationForm.notes}
+                        onChange={(e) => setConsultationForm(prev => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Additional Notes..."
+                        className="w-full px-5 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 min-h-[80px]"
+                      />
+                      <div className="pt-6 flex gap-4">
+                        <button 
+                          onClick={handleSaveConsultation}
+                          className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle2 className="w-5 h-5" />
+                          Complete Consultation & Print
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'patients' && (
+            <motion.div key="patients" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-50">
+                    <th className="text-left py-4 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Patient</th>
+                    <th className="text-left py-4 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Age/Gender</th>
+                    <th className="text-left py-4 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Contact</th>
+                    <th className="text-right py-4 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {patients.map((patient) => (
+                    <tr key={patient.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="py-4 px-4 font-bold text-gray-900">{patient.name}</td>
+                      <td className="py-4 px-4 text-sm text-gray-600">{patient.age}Y / {patient.gender}</td>
+                      <td className="py-4 px-4 text-sm text-gray-600">{patient.phone}</td>
+                      <td className="py-4 px-4 text-right">
+                        <button onClick={() => { setSelectedPatient(patient); setActiveTab('consultation'); }} className="p-2 text-gray-400 hover:text-blue-600"><FileText className="w-5 h-5" /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </motion.div>
+          )}
+
+          {activeTab === 'queue' && (
+            <motion.div key="queue" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {['waiting', 'in-consultation', 'completed'].map((status) => (
+                <div key={status} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+                  <h3 className="font-bold text-gray-900 capitalize mb-6">{status}</h3>
+                  <div className="space-y-4">
+                    {queue.filter(q => q.status === status).map((item) => (
+                      <div key={item.id} className="p-4 rounded-2xl bg-gray-50">
+                        <p className="text-sm font-bold text-gray-900">{item.patient?.name}</p>
+                        <p className="text-[10px] text-gray-500">{item.patient?.gender} • {item.patient?.age}Y</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      <AnimatePresence>
+        {loading && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
+            <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4" />
+            <p className="font-bold text-gray-900">Retrieving Secure Health Packet...</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {error && (
+          <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50">
+            <AlertCircle className="w-5 h-5" />
+            <p className="font-bold">{error}</p>
+            <button onClick={() => setError(null)} className="ml-4 p-1 hover:bg-white/20 rounded-lg transition-colors"><Plus className="w-4 h-4 rotate-45" /></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

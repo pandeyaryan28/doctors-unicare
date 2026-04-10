@@ -1,0 +1,5 @@
+{
+  "name": "UniCare EMR",
+  "description": "A doctor-facing EMR web application with patient-controlled QR data sharing, featuring a modern healthcare dashboard and secure temporary data access.",
+  "requestFramePermissions": ["camera"]
+}
