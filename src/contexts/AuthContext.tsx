@@ -77,6 +77,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (session?.user) {
         fetchDoctorProfile(session.user.id);
       }
+    }).catch(err => {
+      console.error('Session fetch error:', err);
+    }).finally(() => {
       setLoading(false);
     });
 
