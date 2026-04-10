@@ -8,6 +8,17 @@
   --font-inter: "Inter", sans-serif;
 }
 
+@layer base {
+  body {
+    @apply transition-colors duration-300;
+  }
+}
+
+::selection {
+  background-color: rgba(37, 99, 235, 0.2);
+  color: #2563eb;
+}
+
 /* ══════════════════════════════════════
    CUSTOM UTILITIES
    (We keep these for the login page)

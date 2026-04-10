@@ -20,7 +20,9 @@ import {
   Pill,
   FileSearch,
   ClipboardCheck,
-  LogOut
+  LogOut,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { cn, calculateAge, formatDateTime } from './lib/utils';
 import { Patient, Consultation, QueueItem, PacketData, Medicine } from './types';
@@ -210,9 +212,9 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
     : 'DR';
 
   return (
-    <div className="w-64 bg-white dark:bg-slate-900 border-r border-gray-100 dark:border-slate-800 flex flex-col h-screen sticky top-0 transition-colors duration-300">
+    <div className="w-64 bg-white dark:bg-slate-900/50 backdrop-blur-xl border-r border-gray-100 dark:border-slate-800 flex flex-col h-screen sticky top-0 transition-all duration-300">
       <div className="p-6 flex items-center gap-3">
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200 dark:shadow-none">
+        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200 dark:shadow-blue-900/40">
           <Stethoscope className="text-white w-6 h-6" />
         </div>
         <div>
@@ -230,8 +232,8 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
             className={cn(
               "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
               activeTab === item.id 
-                ? "bg-blue-600 text-white shadow-md shadow-blue-100 dark:shadow-none" 
-                : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-100 dark:shadow-none" 
+                : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800/80 hover:text-gray-900 dark:hover:text-white"
             )}
           >
             <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300")} />
@@ -241,7 +243,7 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
       </nav>
 
       <div className="p-4 mt-auto border-t border-gray-50 dark:border-slate-800 space-y-2">
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 dark:bg-slate-800/50">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-transparent dark:border-slate-700/50">
           {doctorProfile?.avatar_url ? (
             <img src={doctorProfile.avatar_url} alt="avatar" className="w-8 h-8 rounded-full object-cover" />
           ) : (
@@ -266,18 +268,32 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
   );
 };
 
-const StatCard = ({ label, value, icon: Icon, color }: { label: string, value: string | number, icon: any, color: string }) => (
-  <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300">
-    <div className="flex items-center justify-between mb-4">
-      <div className={cn("p-3 rounded-2xl", color, "dark:bg-opacity-20")}>
-        <Icon className="w-6 h-6" />
+const StatCard = ({ label, value, icon: Icon, color }: { label: string, value: string | number, icon: any, color: string }) => {
+  const getColors = () => {
+    switch(color) {
+      case 'blue': return "bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400";
+      case 'orange': return "bg-orange-50 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400";
+      case 'green': return "bg-green-50 text-green-600 dark:bg-green-900/40 dark:text-green-400";
+      default: return color;
+    }
+  };
+  
+  return (
+    <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-xl hover:translate-y-[-4px] transition-all duration-300 group">
+      <div className="flex items-center justify-between mb-4">
+        <div className={cn("p-3 rounded-2xl transition-all duration-500 group-hover:scale-110", getColors())}>
+          <Icon className="w-6 h-6" />
+        </div>
+        <div className="flex flex-col items-end">
+          <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Today</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1 animate-pulse" />
+        </div>
       </div>
-      <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Today</span>
+      <h3 className="text-3xl font-bold text-gray-900 dark:text-white transition-colors">{value}</h3>
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mt-1">{label}</p>
     </div>
-    <h3 className="text-3xl font-bold text-gray-900 dark:text-white transition-colors">{value}</h3>
-    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{label}</p>
-  </div>
-);
+  );
+};
 
 const QRScanner = ({ onScan }: { onScan: (url: string) => void }) => {
   const [input, setInput] = useState('');
@@ -777,17 +793,17 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#F9FAFB]">
+    <div className="flex min-h-screen bg-[#F9FAFB] dark:bg-slate-950 transition-colors duration-300">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       
       <main className="flex-1 p-8 overflow-y-auto">
         {/* Page Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 capitalize">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white capitalize transition-colors">
               {activeTab.replace('-', ' ')}
             </h2>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-slate-400">
               {activeTab === 'dashboard' ? 'Good morning, Dr. Aryan. Here is your clinic overview.' : 
                activeTab === 'patients' ? 'Manage permanent patient records.' :
                activeTab === 'queue' ? 'Track patients waiting for consultation.' : 
@@ -797,10 +813,18 @@ export default function App() {
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setDarkMode(!darkMode)}
-              className="p-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-gray-400 dark:text-gray-300 hover:text-blue-600 transition-all shadow-sm"
+              className="flex items-center gap-3 p-1.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl transition-all shadow-sm group"
               title="Toggle Theme"
             >
-              {darkMode ? <Plus className="w-5 h-5 rotate-45" /> : <Clock className="w-5 h-5" />}
+              <div className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 transform",
+                darkMode ? "bg-slate-800 text-blue-400 rotate-180 shadow-inner" : "bg-blue-500 text-white shadow-lg shadow-blue-100"
+              )}>
+                {darkMode ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              </div>
+              <span className="pr-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 group-hover:text-blue-600 transition-colors hidden sm:block">
+                {darkMode ? 'Dark Mode' : 'Light Mode'}
+              </span>
             </button>
             <button className="p-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-gray-400 dark:text-gray-300 hover:text-gray-600 transition-colors relative">
               <Bell className="w-5 h-5" />
@@ -809,7 +833,7 @@ export default function App() {
             <div className="h-10 w-[1px] bg-gray-200 mx-2" />
             <button 
               onClick={() => setActiveTab('dashboard')}
-              className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all flex items-center gap-2"
+              className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all flex items-center gap-2"
             >
               <Plus className="w-5 h-5" />
               New Consultation
@@ -827,14 +851,14 @@ export default function App() {
               className="space-y-8"
             >
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatCard label="Total Patients" value={patients.length} icon={Users} color="bg-blue-50 text-blue-600" />
-                <StatCard label="In Queue" value={queue.filter(q => q.status !== 'completed').length} icon={Clock} color="bg-orange-50 text-orange-600" />
-                <StatCard label="Completed" value={queue.filter(q => q.status === 'completed').length} icon={CheckCircle2} color="bg-green-50 text-green-600" />
+                <StatCard label="Total Patients" value={patients.length} icon={Users} color="blue" />
+                <StatCard label="In Queue" value={queue.filter(q => q.status !== 'completed').length} icon={Clock} color="orange" />
+                <StatCard label="Completed" value={queue.filter(q => q.status === 'completed').length} icon={CheckCircle2} color="green" />
               </div>
 
                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <QRScanner onScan={handleQRScan} />
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-300">
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-all duration-300">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Queue</h3>
                     <button onClick={() => setActiveTab('queue')} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline">View All</button>
@@ -1062,18 +1086,18 @@ export default function App() {
                           value={consultationForm.notes}
                           onChange={(e) => setConsultationForm(prev => ({ ...prev, notes: e.target.value }))}
                           placeholder="e.g. Bed rest, avoid cold drinks, follow up in 1 week..."
-                          className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white transition-all min-h-[100px] text-sm"
+                          className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-2 border-transparent rounded-2xl focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800 transition-all min-h-[100px] text-sm text-gray-900 dark:text-white dark:placeholder:text-gray-500"
                         />
                       </div>
 
-                      <div className="pt-6 border-t border-gray-50 flex items-center justify-between gap-6">
+                      <div className="pt-6 border-t border-gray-50 dark:border-slate-800 flex items-center justify-between gap-6">
                         <div className="text-xs text-gray-400 font-medium">
                           All changes are autosaved | Secure Encryption Active
                         </div>
                         <button 
                           onClick={handleSaveConsultation}
                           disabled={!consultationForm.diagnosis || consultationForm.medicines.length === 0}
-                          className="px-10 py-5 bg-blue-600 text-white rounded-2xl font-bold shadow-xl shadow-blue-200 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
+                          className="px-10 py-5 bg-blue-600 text-white rounded-2xl font-bold shadow-xl shadow-blue-200 dark:shadow-none hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:scale-100"
                         >
                           <CheckCircle2 className="w-6 h-6" />
                           Finalize & Print Rx
