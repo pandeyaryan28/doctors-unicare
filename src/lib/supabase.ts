@@ -4,25 +4,19 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables. Please check your .env file or Vercel dashboard settings.');
+  console.error('CRITICAL: Missing Primary Supabase environment variables. Check your .env file or production environment settings.');
 }
 
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder'
-);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const patientSupabaseUrl = import.meta.env.VITE_PATIENT_SUPABASE_URL || '';
 const patientSupabaseAnonKey = import.meta.env.VITE_PATIENT_SUPABASE_ANON_KEY || '';
 
 if (!patientSupabaseUrl || !patientSupabaseAnonKey) {
-  console.error('Missing Patient Supabase environment variables. If you just added them to .env, please RESTART YOUR DEVELOPMENT SERVER.');
+  console.warn('WARNING: Missing Patient Supabase environment variables. Patient health packet importing will not work.');
 }
 
-export const patientSupabase = createClient(
-  patientSupabaseUrl || 'https://placeholder.supabase.co',
-  patientSupabaseAnonKey || 'placeholder'
-);
+export const patientSupabase = createClient(patientSupabaseUrl, patientSupabaseAnonKey);
 
 export type Database = {
   public: {
