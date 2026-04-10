@@ -996,6 +996,15 @@ export default function App() {
       </main>
 
       <AnimatePresence>
+        {selectedRecord && (
+          <MediaPreviewModal 
+            record={selectedRecord} 
+            onClose={() => setSelectedRecord(null)} 
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {scanLoading && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
             <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4" />
