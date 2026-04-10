@@ -29,6 +29,170 @@ import LoginPage from './pages/LoginPage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+const PatientRecordView = ({ 
+  packet, 
+  onClose, 
+  onPreview 
+}: { 
+  packet: PacketData, 
+  onClose: () => void,
+  onPreview: (record: any) => void
+}) => {
+  return (
+    <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50">
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div className="flex items-center justify-between">
+          <button 
+            onClick={onClose}
+            className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span>Back to Queue</span>
+          </button>
+          <div className="px-4 py-2 bg-blue-50 text-blue-600 rounded-full text-xs font-bold uppercase tracking-widest">
+            Health Packet Verified
+          </div>
+        </div>
+
+        {/* Patient Identity */}
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 flex items-start gap-8">
+          <div className="w-24 h-24 bg-blue-100 rounded-3xl flex items-center justify-center text-blue-600">
+            <Users className="w-10 h-10" />
+          </div>
+          <div className="flex-1 grid grid-cols-2 gap-y-4 gap-x-8">
+            <div className="col-span-2">
+              <h1 className="text-3xl font-bold text-gray-900">{packet.profile_data.name}</h1>
+              <p className="text-gray-500 flex items-center gap-2 mt-1">
+                <Calendar className="w-4 h-4" />
+                {packet.profile_data.dob ? `${calculateAge(packet.profile_data.dob)} years • ${formatDateTime(packet.profile_data.dob)}` : 'Age unknown'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase">Gender</p>
+              <p className="font-semibold text-gray-900">{packet.profile_data.gender}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase">Blood Group</p>
+              <p className="font-semibold text-gray-900 text-red-600">{packet.profile_data.blood_group}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Medical History */}
+        {packet.medical_history.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5 text-blue-600" />
+              Medical History
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {packet.medical_history.map((h, i) => (
+                <div key={i} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <p className="text-xs font-bold text-gray-400 uppercase mb-2">{h.question}</p>
+                  <p className="text-gray-900">{h.answer || 'No response provided'}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Clinical Records */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-600" />
+            Shared Records ({packet.records.length})
+          </h2>
+          <div className="grid grid-cols-1 gap-4">
+            {packet.records.length > 0 ? packet.records.map((r, i) => (
+              <div key={i} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between group hover:border-blue-200 transition-all">
+                <div className="flex items-center gap-4">
+                  <div className={cn(
+                    "p-3 rounded-xl",
+                    r.type === 'lab' ? "bg-amber-50 text-amber-600" : 
+                    r.type === 'prescription' ? "bg-blue-50 text-blue-600" : "bg-gray-50 text-gray-600"
+                  )}>
+                    <FileSearch className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">{r.title}</h3>
+                    <p className="text-sm text-gray-500">{r.provider} • {formatDateTime(r.date)}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => onPreview(r)}
+                  className="px-4 py-2 rounded-xl bg-gray-50 text-gray-600 font-bold text-sm hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2"
+                >
+                  <FileSearch className="w-4 h-4" />
+                  View Record
+                </button>
+              </div>
+            )) : (
+              <div className="bg-gray-100/50 border-2 border-dashed border-gray-200 rounded-3xl p-12 text-center text-gray-500">
+                No clinical records were shared in this packet.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MediaPreviewModal = ({ record, onClose }: { record: any, onClose: () => void }) => {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 md:p-12">
+      <div className="bg-white w-full h-full rounded-3xl overflow-hidden flex flex-col shadow-2xl">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900">{record.title}</h3>
+              <p className="text-xs text-gray-500">{record.file_name} • {record.file_type}</p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <ChevronRight className="w-6 h-6 rotate-90" />
+          </button>
+        </div>
+        <div className="flex-1 bg-gray-900 flex items-center justify-center overflow-auto p-4">
+          {record.file_type.includes('pdf') ? (
+            <iframe 
+              src={record.file_url} 
+              className="w-full h-full rounded-xl"
+              title={record.title}
+            />
+          ) : (
+            <img 
+              src={record.file_url} 
+              alt={record.title} 
+              className="max-w-full max-h-full object-contain rounded-xl"
+            />
+          )}
+        </div>
+        <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-4">
+          <button 
+            onClick={() => window.open(record.file_url, '_blank')}
+            className="px-6 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-50 transition-all"
+          >
+            Open in New Tab
+          </button>
+          <button 
+            onClick={onClose}
+            className="px-6 py-2 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all"
+          >
+            Close Preview
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Components ---
 
 const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab: (tab: string) => void }) => {
@@ -217,6 +381,7 @@ export default function App() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [packetData, setPacketData] = useState<PacketData | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [showSharedData, setShowSharedData] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -358,9 +523,9 @@ export default function App() {
           date: r.date,
           provider: r.provider,
           type: r.type,
-          file_url: r.file_url,
           file_name: r.file_name,
-          file_type: r.file_type
+          file_type: r.file_type,
+          file_url: `https://vtuujzlscnxiyxokxntk.supabase.co/storage/v1/object/public/medical-records/${r.file_url}`
         }))
       };
 
@@ -533,6 +698,7 @@ export default function App() {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       
       <main className="flex-1 p-8 overflow-y-auto">
+        {/* Page Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 capitalize">
@@ -541,7 +707,8 @@ export default function App() {
             <p className="text-sm text-gray-500">
               {activeTab === 'dashboard' ? 'Good morning, Dr. Aryan. Here is your clinic overview.' : 
                activeTab === 'patients' ? 'Manage permanent patient records.' :
-               activeTab === 'queue' ? 'Track patients waiting for consultation.' : 'Complete the clinical record.'}
+               activeTab === 'queue' ? 'Track patients waiting for consultation.' : 
+               activeTab === 'record-view' ? 'Reviewing shared clinical documentation.' : 'Complete the clinical record.'}
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -650,13 +817,19 @@ export default function App() {
                       </div>
                     </div>
                     {packetData && (
-                      <div className="mt-8 pt-8 border-t border-gray-50">
+                      <div className="mt-8 pt-8 space-y-4 border-t border-gray-50">
                         <button 
-                          onClick={() => setShowSharedData(!showSharedData)}
-                          className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-gray-800 transition-all"
+                          onClick={() => setActiveTab('record-view')}
+                          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
                         >
                           <FileSearch className="w-5 h-5" />
-                          {showSharedData ? 'Hide Records' : 'View Shared Records'}
+                          Expand Full Records
+                        </button>
+                        <button 
+                          onClick={() => setShowSharedData(!showSharedData)}
+                          className="w-full py-4 bg-gray-50 text-gray-600 rounded-2xl font-bold border border-gray-100 hover:bg-gray-100 transition-all"
+                        >
+                          {showSharedData ? 'Hide Inline Preview' : 'Preview Shared Data'}
                         </button>
                       </div>
                     )}
@@ -665,26 +838,12 @@ export default function App() {
                   {showSharedData && packetData && (
                     <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
                       <div>
-                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Medical History</h4>
+                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Quick History</h4>
                         <div className="space-y-4">
-                          {packetData.medical_history.map((item, i) => (
+                          {packetData.medical_history.slice(0, 3).map((item, i) => (
                             <div key={i} className="p-4 bg-gray-50 rounded-2xl">
                               <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">{item.question}</p>
                               <p className="text-sm text-gray-900 font-medium">{item.answer}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Health Records</h4>
-                        <div className="space-y-3">
-                          {packetData.records.map((record) => (
-                            <div key={record.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100">
-                              <FileText className="w-5 h-5 text-gray-400" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-gray-900 truncate">{record.title}</p>
-                                <p className="text-[10px] text-gray-500">{record.provider}</p>
-                              </div>
                             </div>
                           ))}
                         </div>
@@ -815,6 +974,21 @@ export default function App() {
                   </div>
                 </div>
               ))}
+            </motion.div>
+          )}
+
+          {activeTab === 'record-view' && packetData && (
+            <motion.div 
+              key="record-view"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <PatientRecordView 
+                packet={packetData} 
+                onClose={() => setActiveTab('consultation')}
+                onPreview={(r) => setSelectedRecord(r)}
+              />
             </motion.div>
           )}
         </AnimatePresence>
