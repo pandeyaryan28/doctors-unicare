@@ -42,41 +42,41 @@ const PatientRecordView = ({
   onPreview: (record: any) => void
 }) => {
   return (
-    <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50">
+    <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50 dark:bg-slate-950/20">
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <button 
             onClick={onClose}
-            className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
+            className="flex items-center gap-2 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
-            <span>Back to Queue</span>
+            <span className="font-bold text-sm tracking-tight">Back to Queue</span>
           </button>
-          <div className="px-4 py-2 bg-blue-50 text-blue-600 rounded-full text-xs font-bold uppercase tracking-widest">
+          <div className="px-4 py-2 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-full text-[10px] font-bold uppercase tracking-widest border border-blue-100 dark:border-blue-800/50">
             Health Packet Verified
           </div>
         </div>
 
         {/* Patient Identity */}
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-start gap-8">
-          <div className="w-24 h-24 bg-blue-100 dark:bg-blue-900/40 rounded-3xl flex items-center justify-center text-blue-600 dark:text-blue-400">
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-800 flex items-start gap-8 transition-colors">
+          <div className="w-24 h-24 bg-blue-50 dark:bg-blue-900/40 rounded-3xl flex items-center justify-center text-blue-600 dark:text-blue-400 shadow-inner">
             <Users className="w-10 h-10" />
           </div>
           <div className="flex-1 grid grid-cols-2 gap-y-4 gap-x-8">
             <div className="col-span-2">
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{packet.profile_data.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white transition-colors">{packet.profile_data.name}</h1>
               <p className="text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-1">
                 <Calendar className="w-4 h-4" />
                 {packet.profile_data.dob ? `${calculateAge(packet.profile_data.dob)} years • ${formatDateTime(packet.profile_data.dob)}` : 'Age unknown'}
               </p>
             </div>
             <div>
-              <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">Gender</p>
-              <p className="font-semibold text-gray-900 dark:text-white">{packet.profile_data.gender}</p>
+              <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Gender</p>
+              <p className="font-bold text-gray-900 dark:text-white">{packet.profile_data.gender}</p>
             </div>
             <div>
-              <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">Blood Group</p>
-              <p className="font-semibold text-gray-900 dark:text-white text-red-600 dark:text-red-400">{packet.profile_data.blood_group}</p>
+              <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Blood Group</p>
+              <p className="font-bold text-red-600 dark:text-red-400">{packet.profile_data.blood_group}</p>
             </div>
           </div>
         </div>
@@ -84,15 +84,17 @@ const PatientRecordView = ({
         {/* Medical History */}
         {packet.medical_history.length > 0 && (
           <div className="space-y-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <ClipboardCheck className="w-5 h-5 text-blue-600" />
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 px-2 transition-colors">
+              <div className="p-2 bg-blue-50 dark:bg-blue-900/40 rounded-lg">
+                <ClipboardCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
               Medical History
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {packet.medical_history.map((h, i) => (
-                <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm">
-                  <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2">{h.question}</p>
-                  <p className="text-gray-900 dark:text-gray-100">{h.answer || 'No response provided'}</p>
+                <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors group">
+                  <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-2 tracking-widest">{h.question}</p>
+                  <p className="text-gray-900 dark:text-gray-100 font-medium">{h.answer || 'No response provided'}</p>
                 </div>
               ))}
             </div>
@@ -101,37 +103,39 @@ const PatientRecordView = ({
 
         {/* Clinical Records */}
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-600" />
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 px-2 transition-colors">
+            <div className="p-2 bg-blue-50 dark:bg-blue-900/40 rounded-lg">
+              <FileSearch className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
             Shared Records ({packet.records.length})
           </h2>
           <div className="grid grid-cols-1 gap-4">
             {packet.records.length > 0 ? packet.records.map((r, i) => (
-              <div key={i} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between group hover:border-blue-200 transition-all">
+              <div key={i} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm flex items-center justify-between group hover:border-blue-400 dark:hover:border-blue-500 transition-all hover:bg-blue-50/30 dark:hover:bg-blue-900/10">
                 <div className="flex items-center gap-4">
                   <div className={cn(
-                    "p-3 rounded-xl",
-                    r.type === 'lab' ? "bg-amber-50 text-amber-600" : 
-                    r.type === 'prescription' ? "bg-blue-50 text-blue-600" : "bg-gray-50 text-gray-600"
+                    "p-3 rounded-2xl transition-all duration-300 group-hover:scale-110",
+                    r.type === 'lab' ? "bg-amber-50 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400" : 
+                    r.type === 'prescription' ? "bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" : "bg-gray-50 text-gray-600 dark:bg-slate-800 dark:text-gray-400"
                   )}>
-                    <FileSearch className="w-5 h-5" />
+                    <FileText className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-900">{r.title}</h3>
-                    <p className="text-sm text-gray-500">{r.provider} • {formatDateTime(r.date)}</p>
+                    <h3 className="font-bold text-gray-900 dark:text-white transition-colors">{r.title}</h3>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-tight">{r.provider} • {formatDateTime(r.date)}</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => onPreview(r)}
-                  className="px-4 py-2 rounded-xl bg-gray-50 text-gray-600 font-bold text-sm hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2"
+                  className="px-6 py-2.5 rounded-xl bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-gray-400 font-bold text-xs hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white dark:hover:text-white transition-all flex items-center gap-2 border border-transparent dark:border-slate-700/50"
                 >
                   <FileSearch className="w-4 h-4" />
                   View Record
                 </button>
               </div>
             )) : (
-              <div className="bg-gray-100/50 border-2 border-dashed border-gray-200 rounded-3xl p-12 text-center text-gray-500">
-                No clinical records were shared in this packet.
+              <div className="bg-gray-50/50 dark:bg-slate-900/50 border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-3xl p-12 text-center">
+                <p className="text-sm font-medium text-gray-400 dark:text-gray-500">No clinical records were shared in this packet.</p>
               </div>
             )}
           </div>
@@ -147,19 +151,19 @@ const MediaPreviewModal = ({ record, onClose }: { record: any, onClose: () => vo
       <div className="bg-white dark:bg-slate-900 w-full h-full rounded-3xl overflow-hidden flex flex-col shadow-2xl transition-colors duration-300">
         <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+            <div className="p-2 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-lg">
               <FileText className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-gray-900">{record.title}</h3>
-              <p className="text-xs text-gray-500">{record.file_name} • {record.file_type}</p>
+              <h3 className="font-bold text-gray-900 dark:text-white transition-colors">{record.title}</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium tracking-tight">{record.file_name} • {record.file_type}</p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors group"
           >
-            <ChevronRight className="w-6 h-6 rotate-90" />
+            <ChevronRight className="w-6 h-6 rotate-90 text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white" />
           </button>
         </div>
         <div className="flex-1 bg-gray-900 flex items-center justify-center overflow-auto p-4">
@@ -177,16 +181,17 @@ const MediaPreviewModal = ({ record, onClose }: { record: any, onClose: () => vo
             />
           )}
         </div>
-        <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-4">
+        <div className="p-4 border-t border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900 flex justify-end gap-4 transition-colors">
           <button 
             onClick={() => window.open(record.file_url, '_blank')}
-            className="px-6 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-50 transition-all"
+            className="px-6 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-slate-700 transition-all transition-colors"
           >
+            <Plus className="w-4 h-4 rotate-45" />
             Open in New Tab
           </button>
           <button 
             onClick={onClose}
-            className="px-6 py-2 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all"
+            className="px-6 py-2 bg-gray-900 dark:bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-black dark:hover:bg-blue-700 transition-all"
           >
             Close Preview
           </button>
@@ -212,13 +217,13 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
     : 'DR';
 
   return (
-    <div className="w-64 bg-white dark:bg-slate-900/50 backdrop-blur-xl border-r border-gray-100 dark:border-slate-800 flex flex-col h-screen sticky top-0 transition-all duration-300">
+    <div className="w-64 bg-white dark:bg-slate-900/60 backdrop-blur-xl border-r border-gray-100 dark:border-slate-800 flex flex-col h-screen sticky top-0 transition-all duration-300 z-50">
       <div className="p-6 flex items-center gap-3">
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200 dark:shadow-blue-900/40">
+        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-100 dark:shadow-none">
           <Stethoscope className="text-white w-6 h-6" />
         </div>
         <div>
-          <h1 className="font-bold text-gray-900 dark:text-white leading-tight">UniCare</h1>
+          <h1 className="font-bold text-gray-900 dark:text-white leading-tight transition-colors">UniCare</h1>
           <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 tracking-widest uppercase">EMR Portal</p>
         </div>
       </div>
@@ -232,18 +237,18 @@ const Sidebar = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab:
             className={cn(
               "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
               activeTab === item.id 
-                ? "bg-blue-600 text-white shadow-lg shadow-blue-100 dark:shadow-none" 
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-200/50 dark:shadow-none" 
                 : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800/80 hover:text-gray-900 dark:hover:text-white"
             )}
           >
             <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300")} />
-            <span className="font-medium">{item.label}</span>
+            <span className="font-bold text-sm">{item.label}</span>
           </button>
         ))}
       </nav>
 
       <div className="p-4 mt-auto border-t border-gray-50 dark:border-slate-800 space-y-2">
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-transparent dark:border-slate-700/50">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 border border-transparent dark:border-slate-700/50 group transition-all">
           {doctorProfile?.avatar_url ? (
             <img src={doctorProfile.avatar_url} alt="avatar" className="w-8 h-8 rounded-full object-cover" />
           ) : (
@@ -467,11 +472,14 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
 
   useEffect(() => {
+    const root = window.document.documentElement;
     if (darkMode) {
-      document.documentElement.classList.add('dark');
+      root.classList.add('dark');
+      root.classList.remove('light');
       localStorage.setItem('theme', 'dark');
     } else {
-      document.documentElement.classList.remove('dark');
+      root.classList.add('light');
+      root.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
   }, [darkMode]);
@@ -813,17 +821,22 @@ export default function App() {
           <div className="flex items-center gap-4">
             <button 
               onClick={() => setDarkMode(!darkMode)}
-              className="flex items-center gap-3 p-1.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl transition-all shadow-sm group"
-              title="Toggle Theme"
+              className={cn(
+                "flex items-center gap-3 p-1.5 border transition-all shadow-sm group rounded-2xl",
+                darkMode 
+                  ? "bg-slate-900 border-slate-700 text-blue-400 hover:border-blue-500/50" 
+                  : "bg-white border-gray-200 text-gray-700 hover:border-blue-400"
+              )}
+              title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
               <div className={cn(
                 "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 transform",
-                darkMode ? "bg-slate-800 text-blue-400 rotate-180 shadow-inner" : "bg-blue-500 text-white shadow-lg shadow-blue-100"
+                darkMode ? "bg-slate-800 rotate-[360deg] shadow-inner" : "bg-blue-500 text-white shadow-lg shadow-blue-100"
               )}>
-                {darkMode ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </div>
               <span className="pr-3 text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 group-hover:text-blue-600 transition-colors hidden sm:block">
-                {darkMode ? 'Dark Mode' : 'Light Mode'}
+                {darkMode ? 'Light Mode' : 'Dark Mode'}
               </span>
             </button>
             <button className="p-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-gray-400 dark:text-gray-300 hover:text-gray-600 transition-colors relative">
@@ -1111,24 +1124,26 @@ export default function App() {
           )}
 
           {activeTab === 'patients' && (
-            <motion.div key="patients" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+            <motion.div key="patients" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-50">
-                    <th className="text-left py-4 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Patient</th>
-                    <th className="text-left py-4 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Age/Gender</th>
-                    <th className="text-left py-4 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Contact</th>
-                    <th className="text-right py-4 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Actions</th>
+                  <tr className="border-b border-gray-50 dark:border-slate-800">
+                    <th className="text-left py-4 px-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Patient</th>
+                    <th className="text-left py-4 px-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Age/Gender</th>
+                    <th className="text-left py-4 px-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Contact</th>
+                    <th className="text-right py-4 px-4 text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {patients.map((patient) => (
-                    <tr key={patient.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                      <td className="py-4 px-4 font-bold text-gray-900">{patient.name}</td>
-                      <td className="py-4 px-4 text-sm text-gray-600">{patient.age}Y / {patient.gender}</td>
-                      <td className="py-4 px-4 text-sm text-gray-600">{patient.phone}</td>
+                    <tr key={patient.id} className="border-b border-gray-50 dark:border-slate-800/50 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
+                      <td className="py-4 px-4 font-bold text-gray-900 dark:text-white transition-colors">{patient.name}</td>
+                      <td className="py-4 px-4 text-sm text-gray-600 dark:text-gray-400">{patient.age}Y / {patient.gender}</td>
+                      <td className="py-4 px-4 text-sm text-gray-600 dark:text-gray-400">{patient.phone}</td>
                       <td className="py-4 px-4 text-right">
-                        <button onClick={() => { setSelectedPatient(patient); setActiveTab('consultation'); }} className="p-2 text-gray-400 hover:text-blue-600"><FileText className="w-5 h-5" /></button>
+                        <button onClick={() => { setSelectedPatient(patient); setActiveTab('consultation'); }} className="p-2 text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                          <FileText className="w-5 h-5" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1140,13 +1155,16 @@ export default function App() {
           {activeTab === 'queue' && (
             <motion.div key="queue" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {['waiting', 'in-consultation', 'completed'].map((status) => (
-                <div key={status} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-                  <h3 className="font-bold text-gray-900 capitalize mb-6">{status}</h3>
+                <div key={status} className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors">
+                  <h3 className="font-bold text-gray-900 dark:text-white capitalize mb-6 flex items-center gap-2">
+                    {status}
+                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  </h3>
                   <div className="space-y-4">
                     {queue.filter(q => q.status === status).map((item) => (
-                      <div key={item.id} className="p-4 rounded-2xl bg-gray-50">
-                        <p className="text-sm font-bold text-gray-900">{item.patient?.name}</p>
-                        <p className="text-[10px] text-gray-500">{item.patient?.gender} • {item.patient?.age}Y</p>
+                      <div key={item.id} className="p-4 rounded-2xl bg-gray-50 dark:bg-slate-800/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all border border-transparent dark:border-slate-700/50">
+                        <p className="text-sm font-bold text-gray-900 dark:text-white transition-colors">{item.patient?.name}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{item.patient?.gender} • {item.patient?.age}Y</p>
                       </div>
                     ))}
                   </div>
