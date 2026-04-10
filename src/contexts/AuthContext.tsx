@@ -18,6 +18,7 @@ interface AuthContextType {
   session: Session | null;
   doctorProfile: DoctorProfile | null;
   loading: boolean;
+  isConfigured: boolean;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -35,6 +36,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const isConfigured = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 
   const fetchDoctorProfile = async (userId: string) => {
     const { data, error } = await supabase
@@ -96,7 +98,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, doctorProfile, loading, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, session, doctorProfile, loading, isConfigured, signInWithGoogle, signOut }}>
       {children}
     </AuthContext.Provider>
   );

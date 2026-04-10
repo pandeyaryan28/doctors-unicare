@@ -232,7 +232,7 @@ const PrescriptionPDF = (consultation: Consultation, patient: Patient) => {
 };
 
 export default function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, isConfigured } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -406,11 +406,48 @@ export default function App() {
     }));
   };
 
-  // Auth gate
   if (loading) {
     return (
-      <div className="loading-screen">
-        <div className="spinner" style={{ width: 40, height: 40, borderWidth: 4, borderColor: '#1e3a5f', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
+      <div className="loading-screen bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="spinner" style={{ width: 40, height: 40, borderWidth: 4, borderColor: '#e5e7eb', borderTopColor: '#2563eb', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
+      </div>
+    );
+  }
+
+  if (!isConfigured) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-md w-full bg-white rounded-[32px] p-8 shadow-xl shadow-blue-100/50 border border-blue-50"
+        >
+          <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mb-6">
+            <AlertCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">Configuration Required</h1>
+          <p className="text-gray-600 mb-8 leading-relaxed">
+            UniCare EMR needs your Supabase configuration to function. Please ensure you've added the following environment variables to your deployment or <code className="bg-gray-100 px-1.5 py-0.5 rounded text-red-600 font-mono text-sm">.env</code> file:
+          </p>
+          
+          <div className="space-y-3 mb-8">
+            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+              <div className="w-2 h-2 rounded-full bg-red-400" />
+              <code className="text-sm font-mono text-gray-700">VITE_SUPABASE_URL</code>
+            </div>
+            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+              <div className="w-2 h-2 rounded-full bg-red-400" />
+              <code className="text-sm font-mono text-gray-700">VITE_SUPABASE_ANON_KEY</code>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 rounded-2xl p-4 flex gap-3">
+            <Bell className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-blue-800 leading-relaxed font-medium">
+              After adding these variables to Vercel, don't forget to <b>redeploy</b> your application for the changes to take effect.
+            </p>
+          </div>
+        </motion.div>
       </div>
     );
   }
