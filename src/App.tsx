@@ -1783,7 +1783,7 @@ export default function App() {
     try {
       const { data: extAppts, error } = await patientSupabase
         .from('appointments')
-        .select('*')
+        .select('*, profiles(name)')
         .eq('doctor_id', doctorProfile.id);
 
       if (error) throw error;
@@ -1792,8 +1792,8 @@ export default function App() {
           patient_unicare_appointment_id: a.id,
           doctor_id: a.doctor_id,
           profile_id: a.profile_id,
-          patient_name: a.patient_name,
-          scheduled_at: a.scheduled_at,
+          patient_name: a.profiles?.name || a.title || 'Unknown Patient',
+          scheduled_at: a.date,
           timezone: a.timezone,
           status: a.status,
           notes: a.notes,
@@ -1833,22 +1833,10 @@ export default function App() {
     // Patient Appointments Realtime — listen for inserts/updates from Patient DB
     const patientApptChannel = patientSupabase
       .channel('patient-appointments-realtime-doctor-view')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${doctorProfile.id}` }, async (payload) => {
-        if (payload.new && Object.keys(payload.new).length > 0) {
-          const extAppt = payload.new as any;
-          const toUpsert = {
-            patient_unicare_appointment_id: extAppt.id,
-            doctor_id: extAppt.doctor_id,
-            profile_id: extAppt.profile_id,
-            patient_name: extAppt.patient_name,
-            scheduled_at: extAppt.scheduled_at,
-            timezone: extAppt.timezone,
-            status: extAppt.status,
-            notes: extAppt.notes,
-          };
-          await supabase.from('appointments').upsert(toUpsert, { onConflict: 'patient_unicare_appointment_id' });
-          fetchAppointments();
-        }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${doctorProfile.id}` }, async () => {
+        // Just re-run the full sync to properly join profile name
+        await syncPatientAppointmentsToLocal();
+        fetchAppointments();
       })
       .subscribe();
 
