@@ -146,7 +146,7 @@ const PrescriptionPDF = (consultation: Consultation, patient: Patient, doctor: D
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   if ((doctor as any).clinic_address) doc.text((doctor as any).clinic_address, 20, 27);
-  if ((doctor as any).phone) doc.text(`📞 ${(doctor as any).phone}`, 20, 33);
+  if ((doctor as any).phone) doc.text(`Tel: ${(doctor as any).phone}`, 20, 33);
 
   const doctorName = `DR. ${(doctor.full_name || 'Doctor').toUpperCase()}`;
   doc.setFontSize(12);
@@ -584,8 +584,8 @@ function AddToQueueModal({ patients, onAdd, onClose }: AddToQueueModalProps) {
           {/* Tabs */}
           <div className="flex gap-2 p-1 bg-gray-100 dark:bg-slate-800 rounded-xl">
             {(['existing', 'new'] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)} className={cn("flex-1 py-2 rounded-lg text-sm font-bold transition-all", tab === t ? "bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}>
-                {t === 'existing' ? '🔍 Existing Patient' : '➕ New Walk-in'}
+              <button key={t} onClick={() => setTab(t)} className={cn("flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2", tab === t ? "bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400")}>
+                {t === 'existing' ? <><Search className="w-3.5 h-3.5" />Existing Patient</> : <><UserPlus className="w-3.5 h-3.5" />New Walk-in</>}
               </button>
             ))}
           </div>
@@ -1226,9 +1226,9 @@ const MedicineEntryForm = ({ newMedicine, setNewMedicine, addMedicine }: {
       <div>
         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">When to Take</label>
         <div className="flex gap-2 flex-wrap">
-          <TimingChip label="🌅 Morning" active={newMedicine.timing.includes('morning')} onClick={() => toggleTiming('morning')} />
-          <TimingChip label="☀️ Noon" active={newMedicine.timing.includes('noon')} onClick={() => toggleTiming('noon')} />
-          <TimingChip label="🌙 Evening" active={newMedicine.timing.includes('evening')} onClick={() => toggleTiming('evening')} />
+          <TimingChip label="Morning" active={newMedicine.timing.includes('morning')} onClick={() => toggleTiming('morning')} />
+          <TimingChip label="Noon" active={newMedicine.timing.includes('noon')} onClick={() => toggleTiming('noon')} />
+          <TimingChip label="Evening" active={newMedicine.timing.includes('evening')} onClick={() => toggleTiming('evening')} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -2109,9 +2109,23 @@ export default function App() {
         await supabase.from('queue').update({ status: 'completed' }).eq('id', activeQueueItem.id);
       }
 
-      // If this consultation came from an appointment, mark it complete
-      // and write a prescription record back to the patient app
+      // Build the full prescription payload with all details
+      const prescriptionPayload = {
+        doctor_id: doctorProfile.id,
+        symptoms: consultationForm.symptoms || null,
+        diagnosis: consultationForm.diagnosis || null,
+        medications: consultationForm.medicines,
+        notes: consultationForm.notes || null,
+        doctor_name: doctorProfile.full_name || '',
+        doctor_specialty: doctorProfile.specialty || '',
+        clinic_name: (doctorProfile as any).clinic_name || '',
+        clinic_address: (doctorProfile as any).clinic_address || '',
+        doctor_phone: (doctorProfile as any).phone || '',
+        issued_at: new Date().toISOString(),
+      };
+
       if (activeAppointment) {
+        // Mark appointment complete on doctor side
         await supabase
           .from('appointments')
           .update({ status: 'completed' })
@@ -2123,15 +2137,30 @@ export default function App() {
           .update({ status: 'completed' })
           .eq('id', activeAppointment.patient_unicare_appointment_id);
 
-        // Write prescription to patient app so patient can view it
+        // Write full prescription to patient app so patient can view all details
         await patientSupabase.from('prescriptions').insert({
+          ...prescriptionPayload,
           appointment_id: activeAppointment.patient_unicare_appointment_id,
           profile_id: activeAppointment.profile_id,
-          doctor_id: doctorProfile.id,
-          diagnosis: consultationForm.diagnosis || null,
-          medications: consultationForm.medicines,
-          notes: consultationForm.notes || null,
         });
+      } else if (selectedPatient) {
+        // Walk-in or QR scan consultation: try to find the patient's profile in UniCare
+        // by matching phone number, and write prescription there too
+        const patientPhone = selectedPatient.phone;
+        if (patientPhone) {
+          const { data: profile } = await patientSupabase
+            .from('profiles')
+            .select('id')
+            .eq('phone', patientPhone)
+            .maybeSingle();
+          if (profile?.id) {
+            await patientSupabase.from('prescriptions').insert({
+              ...prescriptionPayload,
+              profile_id: profile.id,
+              appointment_id: null,
+            });
+          }
+        }
       }
 
       if (printPdf) {
@@ -2314,12 +2343,14 @@ function PageHeader({ onMenuClick }: { onMenuClick?: () => void }) {
 // ─── AppointmentsPage ─────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
-  pending:    { label: 'Pending',    color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',    dot: 'bg-amber-400' },
-  confirmed:  { label: 'Confirmed',  color: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',       dot: 'bg-blue-500' },
-  checked_in: { label: 'Checked In', color: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', dot: 'bg-purple-500' },
-  completed:  { label: 'Completed',  color: 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400',   dot: 'bg-green-500' },
-  cancelled:  { label: 'Cancelled',  color: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400',          dot: 'bg-red-400' },
+  pending:    { label: 'Pending Review',  color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',    dot: 'bg-amber-400' },
+  confirmed:  { label: 'Confirmed',       color: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',       dot: 'bg-blue-500' },
+  checked_in: { label: 'In Consultation', color: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', dot: 'bg-purple-500' },
+  completed:  { label: 'Completed',       color: 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400',   dot: 'bg-green-500' },
+  cancelled:  { label: 'Cancelled',       color: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400',          dot: 'bg-red-400' },
 };
+
+type ApptTab = 'pending' | 'confirmed' | 'checked_in' | 'completed' | 'cancelled';
 
 function AppointmentCard({
   appt, onConfirm, onCancel, onCheckIn,
@@ -2340,75 +2371,88 @@ function AppointmentCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-sm hover:shadow-md transition-shadow"
+      className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 shadow-sm hover:shadow-md transition-shadow"
     >
-      {/* Date pill */}
-      <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex flex-col items-center justify-center">
-        <span className="text-xl font-bold text-blue-700 dark:text-blue-400 leading-none">{scheduled.getDate()}</span>
-        <span className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide">
-          {scheduled.toLocaleString('en-IN', { month: 'short' })}
-        </span>
-      </div>
-
-      {/* Main info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="font-bold text-gray-900 dark:text-white truncate">{appt.patient_name}</p>
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.color}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{cfg.label}
+      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+        {/* Date pill */}
+        <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex flex-col items-center justify-center">
+          <span className="text-xl font-bold text-blue-700 dark:text-blue-400 leading-none">{scheduled.getDate()}</span>
+          <span className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide">
+            {scheduled.toLocaleString('en-IN', { month: 'short' })}
           </span>
         </div>
-        <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
-          <ClockIcon className="w-3.5 h-3.5 inline-block mr-1 -mt-px" />
-          {dateStr} · {timeStr}
-        </p>
-        {appt.notes && (
-          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 truncate">{appt.notes}</p>
-        )}
-      </div>
 
-      {/* Action buttons */}
-      <div className="flex gap-2 flex-shrink-0">
-        {appt.status === 'pending' && (
-          <>
-            <button
-              onClick={() => onConfirm(appt)}
-              className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
-              title="Confirm appointment"
-            >
-              <CalendarCheck className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => onCancel(appt)}
-              className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 rounded-xl transition-colors"
-              title="Cancel appointment"
-            >
-              <CalendarX className="w-4 h-4" />
-            </button>
-          </>
-        )}
-        {appt.status === 'confirmed' && (
-          <>
-            <button
-              onClick={() => onCheckIn(appt)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition-colors"
-            >
-              <CheckCircle2 className="w-4 h-4" />Check In
-            </button>
-            <button
-              onClick={() => onCancel(appt)}
-              className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 rounded-xl transition-colors"
-              title="Cancel appointment"
-            >
-              <CalendarX className="w-4 h-4" />
-            </button>
-          </>
-        )}
-        {appt.status === 'checked_in' && (
-          <span className="flex items-center gap-2 px-3 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 rounded-xl text-xs font-semibold">
-            <Hourglass className="w-3.5 h-3.5" />In Consultation
-          </span>
-        )}
+        {/* Main info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-bold text-gray-900 dark:text-white">{appt.patient_name}</p>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.color}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{cfg.label}
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
+            <ClockIcon className="w-3.5 h-3.5 inline-block mr-1 -mt-px" />
+            {dateStr} at {timeStr}
+          </p>
+          {appt.notes && (
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 italic">Note: {appt.notes}</p>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-2 flex-shrink-0 self-start sm:self-center">
+          {appt.status === 'pending' && (
+            <>
+              <button
+                onClick={() => onConfirm(appt)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-colors"
+                title="Confirm this appointment"
+              >
+                <CalendarCheck className="w-4 h-4" />Confirm
+              </button>
+              <button
+                onClick={() => onCancel(appt)}
+                className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 rounded-xl transition-colors"
+                title="Decline appointment"
+              >
+                <CalendarX className="w-4 h-4" />
+              </button>
+            </>
+          )}
+          {appt.status === 'confirmed' && (
+            <>
+              <button
+                onClick={() => onCheckIn(appt)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition-colors"
+                title="Patient has arrived — begin consultation"
+              >
+                <CheckCircle2 className="w-4 h-4" />Check In
+              </button>
+              <button
+                onClick={() => onCancel(appt)}
+                className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 rounded-xl transition-colors"
+                title="Cancel appointment"
+              >
+                <CalendarX className="w-4 h-4" />
+              </button>
+            </>
+          )}
+          {appt.status === 'checked_in' && (
+            <span className="flex items-center gap-2 px-3 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 rounded-xl text-xs font-semibold">
+              <Activity className="w-3.5 h-3.5" />In Consultation
+            </span>
+          )}
+          {appt.status === 'completed' && (
+            <span className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl text-xs font-semibold">
+              <CheckCircle2 className="w-3.5 h-3.5" />Prescription Sent
+            </span>
+          )}
+          {appt.status === 'cancelled' && (
+            <span className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl text-xs font-semibold">
+              <CalendarX className="w-3.5 h-3.5" />Cancelled
+            </span>
+          )}
+        </div>
       </div>
     </motion.div>
   );
@@ -2425,19 +2469,57 @@ function AppointmentsPage({
   onCancel: (a: Appointment) => void;
   onCheckIn: (a: Appointment) => void;
 }) {
-  const [activeTab, setActiveTab] = React.useState<'pending' | 'confirmed' | 'checked_in'>('pending');
+  const [activeTab, setActiveTab] = React.useState<ApptTab>('pending');
+  // Fetch all appointments (including completed/cancelled) for the history tabs
+  const { doctorProfile } = useAuth();
+  const [allAppointments, setAllAppointments] = React.useState<Appointment[]>([]);
+  const [loadingHistory, setLoadingHistory] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!doctorProfile) return;
+    if (activeTab === 'completed' || activeTab === 'cancelled') {
+      setLoadingHistory(true);
+      supabase
+        .from('appointments')
+        .select('*')
+        .eq('doctor_id', doctorProfile.id)
+        .eq('status', activeTab)
+        .order('scheduled_at', { ascending: false })
+        .limit(50)
+        .then(({ data }) => {
+          setAllAppointments((data as unknown as Appointment[]) || []);
+          setLoadingHistory(false);
+        });
+    }
+  }, [activeTab, doctorProfile]);
 
   const pending   = appointments.filter(a => a.status === 'pending');
   const confirmed = appointments.filter(a => a.status === 'confirmed');
   const checkedIn = appointments.filter(a => a.status === 'checked_in');
 
-  const tabs: { key: 'pending' | 'confirmed' | 'checked_in'; label: string; count: number; icon: React.ElementType }[] = [
-    { key: 'pending',    label: 'Pending',    count: pending.length,   icon: Hourglass },
-    { key: 'confirmed',  label: 'Confirmed',  count: confirmed.length, icon: CalendarCheck },
-    { key: 'checked_in', label: 'Checked In', count: checkedIn.length, icon: CheckCircle2 },
+  const tabs: { key: ApptTab; label: string; count: number | null; icon: React.ElementType; dotColor: string }[] = [
+    { key: 'pending',    label: 'Pending',    count: pending.length,   icon: Hourglass,     dotColor: 'bg-amber-400' },
+    { key: 'confirmed',  label: 'Confirmed',  count: confirmed.length, icon: CalendarCheck, dotColor: 'bg-blue-500' },
+    { key: 'checked_in', label: 'Active',     count: checkedIn.length, icon: Activity,      dotColor: 'bg-purple-500' },
+    { key: 'completed',  label: 'Completed',  count: null,             icon: CheckCircle2,  dotColor: 'bg-green-500' },
+    { key: 'cancelled',  label: 'Cancelled',  count: null,             icon: CalendarX,     dotColor: 'bg-red-400' },
   ];
 
-  const visible = activeTab === 'pending' ? pending : activeTab === 'confirmed' ? confirmed : checkedIn;
+  const getVisible = () => {
+    if (activeTab === 'pending')    return pending;
+    if (activeTab === 'confirmed')  return confirmed;
+    if (activeTab === 'checked_in') return checkedIn;
+    return allAppointments;
+  };
+  const visible = getVisible();
+
+  const emptyMessages: Record<ApptTab, { title: string; desc: string }> = {
+    pending:    { title: 'No pending appointments', desc: 'New bookings from UniCare patients will appear here for review.' },
+    confirmed:  { title: 'No confirmed appointments', desc: 'After you confirm a pending request, it moves here.' },
+    checked_in: { title: 'No active consultations', desc: 'Appointments move here when you click Check In.' },
+    completed:  { title: 'No completed appointments', desc: 'Appointments you have treated will appear here.' },
+    cancelled:  { title: 'No cancelled appointments', desc: 'Appointments that were declined or cancelled will appear here.' },
+  };
 
   return (
     <motion.div
@@ -2447,46 +2529,55 @@ function AppointmentsPage({
       exit={{ opacity: 0 }}
       className="space-y-6"
     >
-      {/* Summary stat cards (clickable tabs) */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Inline Action Banner — tell doctor what to do */}
+      {pending.length > 0 && (
+        <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl">
+          <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800 dark:text-amber-400">
+            <span className="font-bold">{pending.length} appointment{pending.length !== 1 ? 's' : ''}</span> awaiting your review. Confirm them so patients are notified, then check them in when they arrive.
+          </p>
+        </div>
+      )}
+
+      {/* Tab bar */}
+      <div className="flex gap-1.5 p-1 bg-gray-100 dark:bg-slate-800/80 rounded-2xl overflow-x-auto">
         {tabs.map(tab => (
-          <div
+          <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'cursor-pointer rounded-2xl p-4 border transition-all select-none',
+              'flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all',
               activeTab === tab.key
-                ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 dark:shadow-none'
-                : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 text-gray-900 dark:text-white hover:border-blue-300 dark:hover:border-blue-800',
+                ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
             )}
           >
-            <tab.icon className="w-4 h-4 mb-2 opacity-75" />
-            <p className="text-2xl font-bold">{tab.count}</p>
-            <p className={cn('text-xs font-medium mt-0.5', activeTab === tab.key ? 'text-blue-100' : 'text-gray-500 dark:text-slate-400')}>
-              {tab.label}
-            </p>
-          </div>
+            <span className={cn('w-2 h-2 rounded-full', tab.dotColor)} />
+            {tab.label}
+            {tab.count !== null && (
+              <span className={cn(
+                'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-black',
+                activeTab === tab.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-gray-400',
+              )}>{tab.count}</span>
+            )}
+          </button>
         ))}
       </div>
 
       {/* Cards list */}
       <AnimatePresence mode="wait">
         <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-          {visible.length === 0 ? (
+          {loadingHistory ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
+            </div>
+          ) : visible.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-16 h-16 bg-gray-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4">
                 <Calendar className="w-8 h-8 text-gray-300 dark:text-slate-600" />
               </div>
-              <p className="font-semibold text-gray-400 dark:text-slate-500">
-                No {activeTab === 'pending' ? 'pending' : activeTab === 'confirmed' ? 'confirmed' : 'checked-in'} appointments
-              </p>
-              <p className="text-sm text-gray-300 dark:text-slate-600 mt-1">
-                {activeTab === 'pending'
-                  ? 'New bookings from UniCare will appear here.'
-                  : activeTab === 'confirmed'
-                  ? 'Confirm pending appointments to see them here.'
-                  : 'Checked-in patients appear once you click Check In.'}
-              </p>
+              <p className="font-semibold text-gray-400 dark:text-slate-500">{emptyMessages[activeTab].title}</p>
+              <p className="text-sm text-gray-300 dark:text-slate-600 mt-1 max-w-xs">{emptyMessages[activeTab].desc}</p>
             </div>
           ) : (
             visible.map(appt => (
