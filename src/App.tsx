@@ -13,6 +13,8 @@ import {
   Activity,
   FileText,
   Calendar,
+  CalendarCheck,
+  CalendarX,
   Trash2,
   CheckCircle2,
   AlertCircle,
@@ -42,9 +44,10 @@ import {
   ChevronUp,
   RefreshCw,
   Menu,
+  Clock as ClockIcon,
 } from 'lucide-react';
 import { cn, calculateAge, formatDateTime } from './lib/utils';
-import { Patient, Consultation, QueueItem, PacketData, Medicine } from './types';
+import { Patient, Consultation, QueueItem, PacketData, Medicine, Appointment, AppointmentStatus } from './types';
 import { useAuth } from './contexts/AuthContext';
 import type { DoctorProfile } from './contexts/AuthContext';
 import { supabase, patientSupabase } from './lib/supabase';
@@ -349,6 +352,7 @@ const Sidebar = ({
   const menuItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
     { label: 'Patients', icon: Users, path: '/patients' },
+    { label: 'Appointments', icon: Calendar, path: '/appointments' },
     { label: 'Queue', icon: Clock, path: '/queue' },
     { label: 'Consultations', icon: History, path: '/consultations' },
   ];
@@ -444,7 +448,7 @@ const Sidebar = ({
 const MobileBottomNav = ({ darkMode, onToggleTheme }: { darkMode: boolean; onToggleTheme: () => void }) => {
   const navItems = [
     { label: 'Home', icon: LayoutDashboard, path: '/' },
-    { label: 'Patients', icon: Users, path: '/patients' },
+    { label: 'Appts', icon: Calendar, path: '/appointments' },
     { label: 'Queue', icon: Clock, path: '/queue' },
     { label: 'History', icon: History, path: '/consultations' },
     { label: darkMode ? 'Light' : 'Dark', icon: darkMode ? Sun : Moon, path: null },
@@ -1566,6 +1570,7 @@ function usePageMeta() {
   const titles: Record<string, { title: string; subtitle: string }> = {
     '/': { title: 'Dashboard', subtitle: `Good day, Dr. ${firstName}. Here is your clinic overview.` },
     '/patients': { title: 'Patients', subtitle: 'Manage permanent patient records.' },
+    '/appointments': { title: 'Appointments', subtitle: 'Manage scheduled appointments and check patients in.' },
     '/queue': { title: "Today's Queue", subtitle: 'Manage patient flow and call next in line.' },
     '/consultations': { title: 'Consultation History', subtitle: 'Review and reprint past consultation records.' },
     '/consultation': { title: 'New Consultation', subtitle: 'Complete the clinical record for this patient.' },
@@ -1587,8 +1592,10 @@ export default function App() {
 
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [activeQueueItem, setActiveQueueItem] = useState<QueueItem | null>(null);
+  const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
   const [packetData, setPacketData] = useState<PacketData | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
   const [scanLoading, setScanLoading] = useState(false);
@@ -1620,21 +1627,44 @@ export default function App() {
     if (data) setPatients(data as Patient[]);
   }, [doctorProfile]);
 
+  const fetchAppointments = useCallback(async () => {
+    if (!doctorProfile) return;
+    const { data } = await supabase
+      .from('appointments')
+      .select('*, patient:patients(*)')
+      .eq('doctor_id', doctorProfile.id)
+      .not('status', 'in', '("cancelled","completed")')
+      .order('scheduled_at', { ascending: true });
+    if (data) setAppointments(data as unknown as Appointment[]);
+  }, [doctorProfile]);
+
   useEffect(() => {
     if (!doctorProfile) return;
     fetchQueue();
     fetchPatients();
+    fetchAppointments();
 
-    // Real-time subscription for queue changes
-    const channel = supabase
+    // Queue realtime — scoped to this doctor
+    const queueChannel = supabase
       .channel('queue-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'queue', filter: `doctor_id=eq.${doctorProfile.id}` }, () => {
         fetchQueue();
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [doctorProfile, fetchQueue, fetchPatients]);
+    // Appointments realtime — scoped to this doctor
+    const apptChannel = supabase
+      .channel('appointments-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${doctorProfile.id}` }, () => {
+        fetchAppointments();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(queueChannel);
+      supabase.removeChannel(apptChannel);
+    };
+  }, [doctorProfile, fetchQueue, fetchPatients, fetchAppointments]);
 
   // ── Token number helper ────────────────────────────────────────────────────
 
@@ -1778,6 +1808,107 @@ export default function App() {
     fetchQueue();
   };
 
+  // ── Appointment: Confirm ───────────────────────────────────────────────────
+
+  const handleConfirmAppointment = async (appt: Appointment) => {
+    try {
+      // Update doctor-side mirror
+      await supabase.from('appointments').update({ status: 'confirmed' }).eq('id', appt.id);
+      // Write back to patient app (anon key + RLS policy validates packet)
+      await patientSupabase
+        .from('appointments')
+        .update({ status: 'confirmed' })
+        .eq('id', appt.patient_unicare_appointment_id);
+      fetchAppointments();
+    } catch (err) {
+      console.error('Error confirming appointment:', err);
+    }
+  };
+
+  // ── Appointment: Cancel ────────────────────────────────────────────────────
+
+  const handleCancelAppointment = async (appt: Appointment) => {
+    try {
+      await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appt.id);
+      await patientSupabase
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('id', appt.patient_unicare_appointment_id);
+      fetchAppointments();
+    } catch (err) {
+      console.error('Error cancelling appointment:', err);
+    }
+  };
+
+  // ── Appointment: Check In → Queue ──────────────────────────────────────────
+  // Creates a queue entry, links it, and opens the consultation form.
+
+  const handleCheckInAppointment = async (appt: Appointment) => {
+    if (!doctorProfile) return;
+    try {
+      // Block if another consultation is already in progress
+      const currentInConsult = queue.find(q => q.status === 'in-consultation');
+      if (currentInConsult) {
+        setScanError(`Complete ${currentInConsult.patient?.name}'s consultation before checking in a new patient.`);
+        return;
+      }
+
+      // Resolve or create the local patient record
+      let patient = appt.patient_id
+        ? patients.find(p => p.id === appt.patient_id) ?? null
+        : patients.find(p => p.name === appt.patient_name) ?? null;
+
+      if (!patient) {
+        const { data: newP, error: pErr } = await supabase
+          .from('patients')
+          .insert({ doctor_id: doctorProfile.id, name: appt.patient_name, age: 0, gender: 'Not specified' })
+          .select()
+          .single();
+        if (pErr) throw pErr;
+        patient = newP as Patient;
+        fetchPatients();
+      }
+
+      // Create queue entry
+      const token = await getNextToken();
+      const { data: qEntry, error: qErr } = await supabase
+        .from('queue')
+        .insert({
+          doctor_id: doctorProfile.id,
+          patient_id: patient.id,
+          status: 'in-consultation',
+          token_number: token,
+          chief_complaint: appt.notes || '',
+          called_at: new Date().toISOString(),
+        })
+        .select('*, patient:patients(*)')
+        .single();
+      if (qErr) throw qErr;
+
+      // Link queue_id back to doctor-side appointment + update patient_id if resolved
+      await supabase
+        .from('appointments')
+        .update({ status: 'checked_in', queue_id: qEntry.id, patient_id: patient.id })
+        .eq('id', appt.id);
+
+      // Writeback to patient app
+      await patientSupabase
+        .from('appointments')
+        .update({ status: 'checked_in', queue_id: qEntry.id })
+        .eq('id', appt.patient_unicare_appointment_id);
+
+      const updatedAppt: Appointment = { ...appt, status: 'checked_in', queue_id: qEntry.id, patient_id: patient.id };
+      setActiveAppointment(updatedAppt);
+      setActiveQueueItem(qEntry as unknown as QueueItem);
+      setSelectedPatient(patient);
+      fetchQueue();
+      fetchAppointments();
+      navigate('/consultation');
+    } catch (err: any) {
+      setScanError(err.message || 'Check-in failed');
+    }
+  };
+
   // ── Save Consultation ──────────────────────────────────────────────────────
 
   const handleSaveConsultation = async (printPdf: boolean) => {
@@ -1795,6 +1926,31 @@ export default function App() {
         await supabase.from('queue').update({ status: 'completed' }).eq('id', activeQueueItem.id);
       }
 
+      // If this consultation came from an appointment, mark it complete
+      // and write a prescription record back to the patient app
+      if (activeAppointment) {
+        await supabase
+          .from('appointments')
+          .update({ status: 'completed' })
+          .eq('id', activeAppointment.id);
+
+        // Writeback appointment status to patient app
+        await patientSupabase
+          .from('appointments')
+          .update({ status: 'completed' })
+          .eq('id', activeAppointment.patient_unicare_appointment_id);
+
+        // Write prescription to patient app so patient can view it
+        await patientSupabase.from('prescriptions').insert({
+          appointment_id: activeAppointment.patient_unicare_appointment_id,
+          profile_id: activeAppointment.profile_id,
+          doctor_id: doctorProfile.id,
+          diagnosis: consultationForm.diagnosis || null,
+          medications: consultationForm.medicines,
+          notes: consultationForm.notes || null,
+        });
+      }
+
       if (printPdf) {
         const doc = PrescriptionPDF(data as Consultation, selectedPatient, doctorProfile);
         doc.save(`Rx_${selectedPatient.name.replace(/\s+/g, '_')}_${new Date().toLocaleDateString('en-GB').replace(/\//g, '-')}.pdf`);
@@ -1804,8 +1960,10 @@ export default function App() {
       setNewMedicine({ name: '', timing: [], food: 'after', days: 0 });
       setSelectedPatient(null);
       setActiveQueueItem(null);
+      setActiveAppointment(null);
       setPacketData(null);
       fetchQueue();
+      fetchAppointments();
       navigate('/');
     } catch (err) {
       console.error('Error saving consultation:', err);
@@ -1870,6 +2028,14 @@ export default function App() {
               <DashboardPage patients={patients} queue={queue} onQRScan={handleQRScan} onStartConsultation={handleStartConsultation} />
             } />
             <Route path="/patients" element={<PatientsPage patients={patients} onSelectPatient={setSelectedPatient} />} />
+            <Route path="/appointments" element={
+              <AppointmentsPage
+                appointments={appointments}
+                onConfirm={handleConfirmAppointment}
+                onCancel={handleCancelAppointment}
+                onCheckIn={handleCheckInAppointment}
+              />
+            } />
             <Route path="/queue" element={
               <QueuePage queue={queue} patients={patients} onStartConsultation={handleStartConsultation} onRemoveFromQueue={handleRemoveFromQueue} onAddToQueue={handleAddToQueue} />
             } />
@@ -1959,5 +2125,200 @@ function PageHeader({ onMenuClick }: { onMenuClick?: () => void }) {
         </NavLink>
       </div>
     </div>
+  );
+}
+
+// ─── AppointmentsPage ─────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
+  pending:    { label: 'Pending',    color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',    dot: 'bg-amber-400' },
+  confirmed:  { label: 'Confirmed',  color: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',       dot: 'bg-blue-500' },
+  checked_in: { label: 'Checked In', color: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', dot: 'bg-purple-500' },
+  completed:  { label: 'Completed',  color: 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400',   dot: 'bg-green-500' },
+  cancelled:  { label: 'Cancelled',  color: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400',          dot: 'bg-red-400' },
+};
+
+function AppointmentCard({
+  appt, onConfirm, onCancel, onCheckIn,
+}: {
+  appt: Appointment;
+  onConfirm: (a: Appointment) => void;
+  onCancel: (a: Appointment) => void;
+  onCheckIn: (a: Appointment) => void;
+}) {
+  const scheduled = new Date(appt.scheduled_at);
+  const dateStr = scheduled.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  const timeStr = scheduled.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const cfg = STATUS_CONFIG[appt.status] ?? STATUS_CONFIG.pending;
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 flex flex-col sm:flex-row sm:items-center gap-4 shadow-sm hover:shadow-md transition-shadow"
+    >
+      {/* Date pill */}
+      <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex flex-col items-center justify-center">
+        <span className="text-xl font-bold text-blue-700 dark:text-blue-400 leading-none">{scheduled.getDate()}</span>
+        <span className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide">
+          {scheduled.toLocaleString('en-IN', { month: 'short' })}
+        </span>
+      </div>
+
+      {/* Main info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="font-bold text-gray-900 dark:text-white truncate">{appt.patient_name}</p>
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.color}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />{cfg.label}
+          </span>
+        </div>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
+          <ClockIcon className="w-3.5 h-3.5 inline-block mr-1 -mt-px" />
+          {dateStr} · {timeStr}
+        </p>
+        {appt.notes && (
+          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 truncate">{appt.notes}</p>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2 flex-shrink-0">
+        {appt.status === 'pending' && (
+          <>
+            <button
+              onClick={() => onConfirm(appt)}
+              className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+              title="Confirm appointment"
+            >
+              <CalendarCheck className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onCancel(appt)}
+              className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 rounded-xl transition-colors"
+              title="Cancel appointment"
+            >
+              <CalendarX className="w-4 h-4" />
+            </button>
+          </>
+        )}
+        {appt.status === 'confirmed' && (
+          <>
+            <button
+              onClick={() => onCheckIn(appt)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition-colors"
+            >
+              <CheckCircle2 className="w-4 h-4" />Check In
+            </button>
+            <button
+              onClick={() => onCancel(appt)}
+              className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 rounded-xl transition-colors"
+              title="Cancel appointment"
+            >
+              <CalendarX className="w-4 h-4" />
+            </button>
+          </>
+        )}
+        {appt.status === 'checked_in' && (
+          <span className="flex items-center gap-2 px-3 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 rounded-xl text-xs font-semibold">
+            <Hourglass className="w-3.5 h-3.5" />In Consultation
+          </span>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function AppointmentsPage({
+  appointments,
+  onConfirm,
+  onCancel,
+  onCheckIn,
+}: {
+  appointments: Appointment[];
+  onConfirm: (a: Appointment) => void;
+  onCancel: (a: Appointment) => void;
+  onCheckIn: (a: Appointment) => void;
+}) {
+  const [activeTab, setActiveTab] = React.useState<'pending' | 'confirmed' | 'checked_in'>('pending');
+
+  const pending   = appointments.filter(a => a.status === 'pending');
+  const confirmed = appointments.filter(a => a.status === 'confirmed');
+  const checkedIn = appointments.filter(a => a.status === 'checked_in');
+
+  const tabs: { key: 'pending' | 'confirmed' | 'checked_in'; label: string; count: number; icon: React.ElementType }[] = [
+    { key: 'pending',    label: 'Pending',    count: pending.length,   icon: Hourglass },
+    { key: 'confirmed',  label: 'Confirmed',  count: confirmed.length, icon: CalendarCheck },
+    { key: 'checked_in', label: 'Checked In', count: checkedIn.length, icon: CheckCircle2 },
+  ];
+
+  const visible = activeTab === 'pending' ? pending : activeTab === 'confirmed' ? confirmed : checkedIn;
+
+  return (
+    <motion.div
+      key="appointments"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      className="space-y-6"
+    >
+      {/* Summary stat cards (clickable tabs) */}
+      <div className="grid grid-cols-3 gap-3">
+        {tabs.map(tab => (
+          <div
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              'cursor-pointer rounded-2xl p-4 border transition-all select-none',
+              activeTab === tab.key
+                ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 dark:shadow-none'
+                : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 text-gray-900 dark:text-white hover:border-blue-300 dark:hover:border-blue-800',
+            )}
+          >
+            <tab.icon className="w-4 h-4 mb-2 opacity-75" />
+            <p className="text-2xl font-bold">{tab.count}</p>
+            <p className={cn('text-xs font-medium mt-0.5', activeTab === tab.key ? 'text-blue-100' : 'text-gray-500 dark:text-slate-400')}>
+              {tab.label}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Cards list */}
+      <AnimatePresence mode="wait">
+        <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+          {visible.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-16 h-16 bg-gray-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4">
+                <Calendar className="w-8 h-8 text-gray-300 dark:text-slate-600" />
+              </div>
+              <p className="font-semibold text-gray-400 dark:text-slate-500">
+                No {activeTab === 'pending' ? 'pending' : activeTab === 'confirmed' ? 'confirmed' : 'checked-in'} appointments
+              </p>
+              <p className="text-sm text-gray-300 dark:text-slate-600 mt-1">
+                {activeTab === 'pending'
+                  ? 'New bookings from UniCare will appear here.'
+                  : activeTab === 'confirmed'
+                  ? 'Confirm pending appointments to see them here.'
+                  : 'Checked-in patients appear once you click Check In.'}
+              </p>
+            </div>
+          ) : (
+            visible.map(appt => (
+              <React.Fragment key={appt.id}>
+                <AppointmentCard
+                  appt={appt}
+                  onConfirm={onConfirm}
+                  onCancel={onCancel}
+                  onCheckIn={onCheckIn}
+                />
+              </React.Fragment>
+            ))
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </motion.div>
   );
 }

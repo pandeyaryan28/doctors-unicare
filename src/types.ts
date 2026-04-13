@@ -40,6 +40,25 @@ export interface QueueItem {
   patient?: Patient;
 }
 
+export type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled' | 'checked_in' | 'completed';
+
+export interface Appointment {
+  id: string;
+  patient_unicare_appointment_id: string;
+  doctor_id: string;
+  patient_id: string | null;
+  profile_id: string;
+  patient_name: string;
+  scheduled_at: string;   // ISO UTC
+  timezone: string;
+  status: AppointmentStatus;
+  queue_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  patient?: Patient;      // joined via select
+}
+
 export interface PacketData {
   id: string;
   title: string;
