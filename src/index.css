@@ -287,3 +287,105 @@
   .hero-desc  { margin-left: auto; margin-right: auto; }
   .right-panel { width: 100%; max-width: 420px; }
 }
+
+@media (max-width: 480px) {
+  .login-layout {
+    padding: 20px 16px;
+    gap: 20px;
+    min-height: 100vh;
+  }
+  .feature-list { gap: 10px; }
+  .feature-item { padding: 12px 14px; }
+  .login-card { padding: 28px 20px; }
+  .hero-title { font-size: 1.7rem; }
+  .orb-1 { width: 280px; height: 280px; }
+  .orb-2 { width: 220px; height: 220px; }
+}
+
+/* ── Mobile Layout System ── */
+
+/* Sidebar overlay backdrop */
+.mobile-overlay {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .mobile-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+    z-index: 40;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+}
+
+/* ── Bottom Navigation Bar ── */
+.mobile-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: #ffffff;
+    border-top: 1px solid #f1f5f9;
+    z-index: 50;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 4px;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.08);
+  }
+
+  html.dark .mobile-bottom-nav {
+    background: #0f172a;
+    border-top-color: #1e293b;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.4);
+  }
+
+  .mobile-bottom-nav a,
+  .mobile-bottom-nav button {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 4px;
+    color: #94a3b8;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-radius: 12px;
+    transition: color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-bottom-nav a.active {
+    color: #2563eb;
+  }
+
+  html.dark .mobile-bottom-nav a.active {
+    color: #60a5fa;
+  }
+
+  /* add bottom padding to main so content isn't covered */
+  .app-main {
+    padding-bottom: 80px !important;
+  }
+}

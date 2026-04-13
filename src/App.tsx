@@ -41,6 +41,7 @@ import {
   ClipboardList,
   ChevronUp,
   RefreshCw,
+  Menu,
 } from 'lucide-react';
 import { cn, calculateAge, formatDateTime } from './lib/utils';
 import { Patient, Consultation, QueueItem, PacketData, Medicine } from './types';
@@ -339,7 +340,11 @@ const MediaPreviewModal = ({ record, onClose }: { record: any; onClose: () => vo
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
-const Sidebar = ({ darkMode, onToggleTheme }: { darkMode: boolean; onToggleTheme: () => void }) => {
+const Sidebar = ({
+  darkMode, onToggleTheme, open, onClose,
+}: {
+  darkMode: boolean; onToggleTheme: () => void; open?: boolean; onClose?: () => void;
+}) => {
   const { doctorProfile, signOut } = useAuth();
   const menuItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
@@ -350,59 +355,129 @@ const Sidebar = ({ darkMode, onToggleTheme }: { darkMode: boolean; onToggleTheme
   const initials = doctorProfile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'DR';
 
   return (
-    <div className="w-64 bg-white dark:bg-slate-900/60 backdrop-blur-xl border-r border-gray-100 dark:border-slate-800 flex flex-col h-screen sticky top-0 z-50">
-      <div className="p-6 flex items-center gap-3">
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-100 dark:shadow-none">
-          <Stethoscope className="text-white w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="font-bold text-gray-900 dark:text-white leading-tight">UniCare</h1>
-          <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 tracking-widest uppercase">EMR Portal</p>
-        </div>
-      </div>
+    <>
+      {/* Overlay backdrop for mobile */}
+      {open && <div className="mobile-overlay" onClick={onClose} />}
 
-      <nav className="flex-1 px-4 py-4 space-y-1">
-        <p className="px-4 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">Main Menu</p>
-        {menuItems.map((item) => (
-          <NavLink key={item.path} to={item.path} end={item.path === '/'}
-            className={({ isActive }) => cn(
-              "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
-              isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-200/50 dark:shadow-none" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800/80 hover:text-gray-900 dark:hover:text-white"
-            )}>
-            {({ isActive }) => (<><item.icon className={cn("w-5 h-5", isActive ? "text-white" : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600")} /><span className="font-bold text-sm">{item.label}</span></>)}
+      <motion.div
+        className={cn(
+          "w-64 bg-white dark:bg-slate-900/90 backdrop-blur-xl border-r border-gray-100 dark:border-slate-800 flex flex-col h-screen z-50",
+          // Desktop: sticky in flow; Mobile: fixed drawer
+          "md:sticky md:top-0",
+          "max-md:fixed max-md:top-0 max-md:left-0 max-md:shadow-2xl",
+        )}
+        initial={false}
+        animate={{
+          x: typeof open !== 'undefined' ? (open ? 0 : '-100%') : 0,
+        }}
+        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        style={{ display: 'flex' }}
+      >
+        <div className="p-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-100 dark:shadow-none">
+              <Stethoscope className="text-white w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="font-bold text-gray-900 dark:text-white leading-tight">UniCare</h1>
+              <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 tracking-widest uppercase">EMR Portal</p>
+            </div>
+          </div>
+          {/* Close button visible only on mobile */}
+          <button
+            onClick={onClose}
+            className="md:hidden p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <nav className="flex-1 px-4 py-4 space-y-1">
+          <p className="px-4 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-4">Main Menu</p>
+          {menuItems.map((item) => (
+            <NavLink key={item.path} to={item.path} end={item.path === '/'}
+              onClick={onClose}
+              className={({ isActive }) => cn(
+                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
+                isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-200/50 dark:shadow-none" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800/80 hover:text-gray-900 dark:hover:text-white"
+              )}>
+              {({ isActive }) => (<><item.icon className={cn("w-5 h-5", isActive ? "text-white" : "text-gray-400 dark:text-gray-500 group-hover:text-gray-600")} /><span className="font-bold text-sm">{item.label}</span></>)}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="px-4 pb-2">
+          <button onClick={onToggleTheme} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800/80 hover:text-gray-900 dark:hover:text-white transition-all group">
+            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", darkMode ? "bg-slate-700 text-yellow-400" : "bg-blue-50 text-blue-600")}>
+              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </div>
+            <span className="font-bold text-sm">{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+          </button>
+        </div>
+
+        <div className="p-4 border-t border-gray-50 dark:border-slate-800 space-y-2">
+          <NavLink to="/profile" onClick={onClose} className={({ isActive }) => cn(
+            "flex items-center gap-3 px-4 py-3 rounded-xl border transition-all",
+            isActive ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800" : "bg-gray-50 dark:bg-slate-800/50 border-transparent dark:border-slate-700/50 hover:bg-gray-100 dark:hover:bg-slate-800"
+          )}>
+            {doctorProfile?.avatar_url ? (
+              <img src={doctorProfile.avatar_url} alt="avatar" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-300 font-bold text-xs flex-shrink-0">{initials}</div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{doctorProfile?.full_name || 'Doctor'}</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate flex items-center gap-1"><UserCog className="w-2.5 h-2.5" />Edit Profile</p>
+            </div>
           </NavLink>
-        ))}
-      </nav>
+          <button onClick={signOut} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-all text-sm font-medium">
+            <LogOut className="w-4 h-4" />Sign Out
+          </button>
+        </div>
+      </motion.div>
+    </>
+  );
+};
 
-      <div className="px-4 pb-2">
-        <button onClick={onToggleTheme} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800/80 hover:text-gray-900 dark:hover:text-white transition-all group">
-          <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", darkMode ? "bg-slate-700 text-yellow-400" : "bg-blue-50 text-blue-600")}>
-            {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </div>
-          <span className="font-bold text-sm">{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
-        </button>
-      </div>
+// ─── Mobile Bottom Navigation ─────────────────────────────────────────────────
 
-      <div className="p-4 border-t border-gray-50 dark:border-slate-800 space-y-2">
-        <NavLink to="/profile" className={({ isActive }) => cn(
-          "flex items-center gap-3 px-4 py-3 rounded-xl border transition-all",
-          isActive ? "bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800" : "bg-gray-50 dark:bg-slate-800/50 border-transparent dark:border-slate-700/50 hover:bg-gray-100 dark:hover:bg-slate-800"
-        )}>
-          {doctorProfile?.avatar_url ? (
-            <img src={doctorProfile.avatar_url} alt="avatar" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-600 dark:text-blue-300 font-bold text-xs flex-shrink-0">{initials}</div>
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{doctorProfile?.full_name || 'Doctor'}</p>
-            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate flex items-center gap-1"><UserCog className="w-2.5 h-2.5" />Edit Profile</p>
-          </div>
-        </NavLink>
-        <button onClick={signOut} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-all text-sm font-medium">
-          <LogOut className="w-4 h-4" />Sign Out
-        </button>
-      </div>
-    </div>
+const MobileBottomNav = ({ darkMode, onToggleTheme }: { darkMode: boolean; onToggleTheme: () => void }) => {
+  const navItems = [
+    { label: 'Home', icon: LayoutDashboard, path: '/' },
+    { label: 'Patients', icon: Users, path: '/patients' },
+    { label: 'Queue', icon: Clock, path: '/queue' },
+    { label: 'History', icon: History, path: '/consultations' },
+    { label: darkMode ? 'Light' : 'Dark', icon: darkMode ? Sun : Moon, path: null },
+  ];
+
+  return (
+    <nav className="mobile-bottom-nav">
+      {navItems.map((item) =>
+        item.path ? (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            end={item.path === '/'}
+            className={({ isActive }) => isActive ? 'active' : ''}
+          >
+            {({ isActive }) => (
+              <>
+                <item.icon
+                  className="w-5 h-5"
+                  style={{ color: isActive ? '#2563eb' : undefined }}
+                />
+                <span>{item.label}</span>
+              </>
+            )}
+          </NavLink>
+        ) : (
+          <button key={item.label} onClick={onToggleTheme}>
+            <item.icon className="w-5 h-5" />
+            <span>{item.label}</span>
+          </button>
+        )
+      )}
+    </nav>
   );
 };
 
@@ -743,7 +818,9 @@ function PatientsPage({ patients, onSelectPatient }: { patients: Patient[]; onSe
         <input type="text" placeholder="Search patients by name or phone..." value={search} onChange={e => setSearch(e.target.value)}
           className="w-full pl-11 pr-5 py-3.5 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
       </div>
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
+
+      {/* Desktop table */}
+      <div className="hidden md:block bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-50 dark:border-slate-800">
@@ -780,6 +857,32 @@ function PatientsPage({ patients, onSelectPatient }: { patients: Patient[]; onSe
             <p className="font-medium text-sm">No patients found</p>
           </div>
         )}
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {filtered.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="font-medium text-sm">No patients found</p>
+          </div>
+        ) : filtered.map((patient) => (
+          <div key={patient.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm p-4 flex items-center gap-4">
+            <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-base flex-shrink-0">
+              {patient.name[0]}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-gray-900 dark:text-white truncate">{patient.name}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{patient.age}Y · {patient.gender}{patient.phone ? ` · ${patient.phone}` : ''}</p>
+            </div>
+            <button
+              onClick={() => { onSelectPatient(patient); navigate('/consultation'); }}
+              className="flex-shrink-0 p-2.5 rounded-xl bg-blue-600 text-white shadow-md"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
       </div>
     </motion.div>
   );
@@ -1492,6 +1595,7 @@ export default function App() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [consultationForm, setConsultationForm] = useState({ symptoms: '', diagnosis: '', notes: '', medicines: [] as Medicine[] });
   const [newMedicine, setNewMedicine] = useState<Medicine>({ name: '', timing: [], food: 'after', days: 0 });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const fetchQueue = useCallback(async () => {
     if (!doctorProfile) return;
@@ -1743,10 +1847,23 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB] dark:bg-slate-950 transition-colors duration-300">
-      <Sidebar darkMode={darkMode} onToggleTheme={toggleTheme} />
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex">
+        <Sidebar darkMode={darkMode} onToggleTheme={toggleTheme} />
+      </div>
 
-      <main className="flex-1 p-8 overflow-y-auto">
-        <PageHeader />
+      {/* Mobile slide-in sidebar drawer */}
+      <div className="md:hidden">
+        <Sidebar
+          darkMode={darkMode}
+          onToggleTheme={toggleTheme}
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+        />
+      </div>
+
+      <main className="app-main flex-1 p-4 md:p-8 overflow-y-auto">
+        <PageHeader onMenuClick={() => setSidebarOpen(true)} />
         <AnimatePresence mode="wait">
           <Routes>
             <Route path="/" element={
@@ -1773,6 +1890,9 @@ export default function App() {
         </AnimatePresence>
       </main>
 
+      {/* Mobile bottom nav */}
+      <MobileBottomNav darkMode={darkMode} onToggleTheme={toggleTheme} />
+
       <AnimatePresence>
         {selectedRecord && <MediaPreviewModal record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
       </AnimatePresence>
@@ -1786,7 +1906,7 @@ export default function App() {
       </AnimatePresence>
       <AnimatePresence>
         {scanError && (
-          <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50 max-w-sm">
+          <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-50 max-w-sm w-[calc(100%-2rem)]">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
             <p className="font-bold text-sm">{scanError}</p>
             <button onClick={() => setScanError(null)} className="ml-2 p-1 hover:bg-white/20 rounded-lg transition-colors flex-shrink-0"><X className="w-4 h-4" /></button>
@@ -1799,22 +1919,43 @@ export default function App() {
 
 // ─── PageHeader ───────────────────────────────────────────────────────────────
 
-function PageHeader() {
+function PageHeader({ onMenuClick }: { onMenuClick?: () => void }) {
   const { title, subtitle } = usePageMeta();
   return (
-    <div className="flex items-center justify-between mb-8 gap-4">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white capitalize">{title}</h2>
-        <p className="text-sm text-gray-500 dark:text-slate-400">{subtitle}</p>
-      </div>
-      <div className="flex items-center gap-4 flex-shrink-0">
-        <button className="p-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl text-gray-400 dark:text-gray-300 hover:text-gray-600 transition-colors relative">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-800" />
+    <div className="flex items-center justify-between mb-6 md:mb-8 gap-4">
+      <div className="flex items-center gap-3">
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={onMenuClick}
+          className="md:hidden p-2.5 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl text-gray-500 dark:text-gray-400 hover:text-gray-700 transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" />
         </button>
-        <div className="h-10 w-px bg-gray-200 dark:bg-slate-700" />
-        <NavLink to="/queue" className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all flex items-center gap-2">
+        <div>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white capitalize">{title}</h2>
+          <p className="text-xs md:text-sm text-gray-500 dark:text-slate-400 hidden sm:block">{subtitle}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
+        <button className="p-2.5 md:p-3 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl md:rounded-2xl text-gray-400 dark:text-gray-300 hover:text-gray-600 transition-colors relative">
+          <Bell className="w-4 h-4 md:w-5 md:h-5" />
+          <span className="absolute top-1.5 right-1.5 md:top-2 md:right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-slate-800" />
+        </button>
+        <div className="hidden md:block h-10 w-px bg-gray-200 dark:bg-slate-700" />
+        {/* Full button on desktop, icon-only on mobile */}
+        <NavLink
+          to="/queue"
+          className="hidden md:flex px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all items-center gap-2"
+        >
           <Plus className="w-5 h-5" />New Consultation
+        </NavLink>
+        <NavLink
+          to="/queue"
+          className="md:hidden p-2.5 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-100 dark:shadow-none"
+          aria-label="New Consultation"
+        >
+          <Plus className="w-4 h-4" />
         </NavLink>
       </div>
     </div>
