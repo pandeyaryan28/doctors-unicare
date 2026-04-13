@@ -1534,6 +1534,18 @@ function ProfilePage() {
     try {
       const { error: e } = await supabase.from('doctors').update(form).eq('id', doctorProfile.id);
       if (e) throw e;
+
+      // Update patient DB with potentially new clinic info
+      await patientSupabase.from('clinic_codes').upsert({
+        code: clinicCode,
+        doctor_id: doctorProfile.id,
+        doctor_name: form.full_name || '',
+        specialty: form.specialty || '',
+        clinic_name: form.clinic_name || '',
+        clinic_address: form.clinic_address || '',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'code' });
+
       await refreshProfile();
       setSaved(true); setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
@@ -1766,11 +1778,41 @@ export default function App() {
     if (data) setAppointments(data as unknown as Appointment[]);
   }, [doctorProfile]);
 
+  const syncPatientAppointmentsToLocal = useCallback(async () => {
+    if (!doctorProfile) return;
+    try {
+      const { data: extAppts, error } = await patientSupabase
+        .from('appointments')
+        .select('*')
+        .eq('doctor_id', doctorProfile.id);
+
+      if (error) throw error;
+      if (extAppts && extAppts.length > 0) {
+        const toUpsert = extAppts.map((a: any) => ({
+          patient_unicare_appointment_id: a.id,
+          doctor_id: a.doctor_id,
+          profile_id: a.profile_id,
+          patient_name: a.patient_name,
+          scheduled_at: a.scheduled_at,
+          timezone: a.timezone,
+          status: a.status,
+          notes: a.notes,
+        }));
+        await supabase.from('appointments').upsert(toUpsert, { onConflict: 'patient_unicare_appointment_id' });
+      }
+    } catch (err) {
+      console.error('Failed to sync patient appointments:', err);
+    }
+  }, [doctorProfile]);
+
   useEffect(() => {
     if (!doctorProfile) return;
     fetchQueue();
     fetchPatients();
-    fetchAppointments();
+    
+    syncPatientAppointmentsToLocal().then(() => {
+      fetchAppointments();
+    });
 
     // Queue realtime — scoped to this doctor
     const queueChannel = supabase
@@ -1788,11 +1830,34 @@ export default function App() {
       })
       .subscribe();
 
+    // Patient Appointments Realtime — listen for inserts/updates from Patient DB
+    const patientApptChannel = patientSupabase
+      .channel('patient-appointments-realtime-doctor-view')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${doctorProfile.id}` }, async (payload) => {
+        if (payload.new && Object.keys(payload.new).length > 0) {
+          const extAppt = payload.new as any;
+          const toUpsert = {
+            patient_unicare_appointment_id: extAppt.id,
+            doctor_id: extAppt.doctor_id,
+            profile_id: extAppt.profile_id,
+            patient_name: extAppt.patient_name,
+            scheduled_at: extAppt.scheduled_at,
+            timezone: extAppt.timezone,
+            status: extAppt.status,
+            notes: extAppt.notes,
+          };
+          await supabase.from('appointments').upsert(toUpsert, { onConflict: 'patient_unicare_appointment_id' });
+          fetchAppointments();
+        }
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(queueChannel);
       supabase.removeChannel(apptChannel);
+      patientSupabase.removeChannel(patientApptChannel);
     };
-  }, [doctorProfile, fetchQueue, fetchPatients, fetchAppointments]);
+  }, [doctorProfile, fetchQueue, fetchPatients, fetchAppointments, syncPatientAppointmentsToLocal]);
 
   // ── Token number helper ────────────────────────────────────────────────────
 
