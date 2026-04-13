@@ -959,16 +959,134 @@ function DashboardPage({ patients, queue, onQRScan, onRegisterPatient, onStartCo
   );
 }
 
+// ─── Patient History Drawer ───────────────────────────────────────────────────
+
+function PatientHistoryDrawer({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+  const [consultations, setConsultations] = useState<(Consultation & { patient?: Patient })[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { doctorProfile } = useAuth();
+
+  useEffect(() => {
+    setLoading(true);
+    supabase
+      .from('consultations')
+      .select('*')
+      .eq('patient_id', patient.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setConsultations((data as unknown as Consultation[]) || []);
+        setLoading(false);
+      });
+  }, [patient.id]);
+
+  const handleReprint = (c: Consultation) => {
+    if (!doctorProfile) return;
+    const doc = PrescriptionPDF(c, patient, doctorProfile);
+    doc.save(`Rx_${patient.name.replace(/\s+/g, '_')}_${new Date(c.created_at).toLocaleDateString('en-GB').replace(/\//g, '-')}.pdf`);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[90] flex" onClick={onClose}>
+      <div className="flex-1 bg-black/40 backdrop-blur-sm" />
+      <motion.div
+        initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+        transition={{ type: 'spring', damping: 30, stiffness: 280 }}
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-md bg-white dark:bg-slate-900 h-full flex flex-col shadow-2xl border-l border-gray-100 dark:border-slate-800"
+      >
+        {/* Header */}
+        <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-lg flex-shrink-0">
+            {patient.name[0]}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-gray-900 dark:text-white">{patient.name}</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{patient.age}Y · {patient.gender}{patient.phone ? ` · ${patient.phone}` : ''}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors flex-shrink-0">
+            <X className="w-5 h-5 text-gray-400" />
+          </button>
+        </div>
+
+        {/* Consultation history */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Consultation History ({consultations.length})</p>
+          {loading ? (
+            <div className="flex justify-center py-16">
+              <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
+            </div>
+          ) : consultations.length === 0 ? (
+            <div className="text-center py-16">
+              <ClipboardList className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+              <p className="text-sm font-medium text-gray-400">No consultations yet</p>
+            </div>
+          ) : consultations.map(c => (
+            <div key={c.id} className="bg-gray-50 dark:bg-slate-800/60 rounded-2xl border border-gray-100 dark:border-slate-700 overflow-hidden">
+              <button onClick={() => setExpanded(expanded === c.id ? null : c.id)}
+                className="w-full flex items-start gap-3 p-4 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors text-left">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-900 dark:text-white text-sm">{c.diagnosis || 'No diagnosis recorded'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    {new Date(c.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · {(c.medicines as Medicine[])?.length || 0} medication(s)
+                  </p>
+                  {c.symptoms && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic truncate">{c.symptoms}</p>}
+                </div>
+                {expanded === c.id ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" /> : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />}
+              </button>
+              <AnimatePresence>
+                {expanded === c.id && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-gray-200 dark:border-slate-700">
+                    <div className="p-4 space-y-3">
+                      {c.medicines && (c.medicines as Medicine[]).length > 0 && (
+                        <div className="space-y-2">
+                          {(c.medicines as Medicine[]).map((m, i) => (
+                            <div key={i} className="flex items-center gap-3 p-2.5 bg-white dark:bg-slate-900 rounded-xl">
+                              <Pill className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                              <div>
+                                <p className="text-xs font-bold text-gray-900 dark:text-white uppercase">{m.name}</p>
+                                <p className="text-[10px] text-gray-500">{formatMedicineTiming(m)}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {c.notes && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 italic bg-amber-50 dark:bg-amber-900/20 p-3 rounded-xl">{c.notes}</p>
+                      )}
+                      <button onClick={() => handleReprint(c)}
+                        className="w-full py-2.5 flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all">
+                        <Printer className="w-3.5 h-3.5" />Reprint Prescription
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // ─── Page: Patients ───────────────────────────────────────────────────────────
 
 function PatientsPage({ patients, onSelectPatient }: { patients: Patient[]; onSelectPatient: (p: Patient) => void }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [historyPatient, setHistoryPatient] = useState<Patient | null>(null);
+
   const filtered = patients.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     (p.phone && p.phone.includes(search))
   );
+
   return (
+    <>
     <motion.div key="patients" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -999,10 +1117,16 @@ function PatientsPage({ patients, onSelectPatient }: { patients: Patient[]; onSe
                 <td className="py-4 px-6 text-sm text-gray-600 dark:text-gray-400">{patient.age}Y / {patient.gender}</td>
                 <td className="py-4 px-6 text-sm text-gray-600 dark:text-gray-400">{patient.phone || '—'}</td>
                 <td className="py-4 px-6 text-right">
-                  <button onClick={() => { onSelectPatient(patient); navigate('/consultation'); }}
-                    className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 font-bold text-xs hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1.5 ml-auto">
-                    <FileText className="w-3.5 h-3.5" />Consult
-                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => setHistoryPatient(patient)}
+                      className="px-3 py-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 font-bold text-xs hover:bg-purple-600 hover:text-white transition-all flex items-center gap-1.5">
+                      <History className="w-3.5 h-3.5" />History
+                    </button>
+                    <button onClick={() => { onSelectPatient(patient); navigate('/consultation'); }}
+                      className="px-3 py-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 font-bold text-xs hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5" />Consult
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -1032,41 +1156,44 @@ function PatientsPage({ patients, onSelectPatient }: { patients: Patient[]; onSe
               <p className="font-bold text-gray-900 dark:text-white truncate">{patient.name}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">{patient.age}Y · {patient.gender}{patient.phone ? ` · ${patient.phone}` : ''}</p>
             </div>
-            <button
-              onClick={() => { onSelectPatient(patient); navigate('/consultation'); }}
-              className="flex-shrink-0 p-2.5 rounded-xl bg-blue-600 text-white shadow-md"
-            >
-              <FileText className="w-4 h-4" />
-            </button>
+            <div className="flex gap-2 flex-shrink-0">
+              <button onClick={() => setHistoryPatient(patient)}
+                className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
+                <History className="w-4 h-4" />
+              </button>
+              <button onClick={() => { onSelectPatient(patient); navigate('/consultation'); }}
+                className="p-2.5 rounded-xl bg-blue-600 text-white shadow-md">
+                <FileText className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         ))}
       </div>
     </motion.div>
+
+    <AnimatePresence>
+      {historyPatient && (
+        <PatientHistoryDrawer patient={historyPatient} onClose={() => setHistoryPatient(null)} />
+      )}
+    </AnimatePresence>
+    </>
   );
 }
 
-// ─── Page: Today's Patients (Unified Queue + Scheduled) ──────────────────────
-
-type QueueTab = 'walkin' | 'scheduled';
+// ─── Page: Queue (Unified — Walk-ins + Confirmed Appointments) ───────────────
 
 function QueuePage({
-  queue, patients, appointments, onStartConsultation, onRemoveFromQueue, onAddToQueue,
-  onConfirmAppointment, onCancelAppointment, onCheckInAppointment, onQRScan, onRegisterPatient,
+  queue, patients, onStartConsultation, onRemoveFromQueue, onAddToQueue, onQRScan, onRegisterPatient,
 }: {
   queue: QueueItem[];
   patients: Patient[];
-  appointments: Appointment[];
   onStartConsultation: (item: QueueItem) => void;
   onRemoveFromQueue: (id: string) => void;
   onAddToQueue: (patientId: string, complaint: string, newPatient?: Omit<Patient, 'id'>) => Promise<void>;
-  onConfirmAppointment: (a: Appointment) => void;
-  onCancelAppointment: (a: Appointment) => void;
-  onCheckInAppointment: (a: Appointment) => void;
   onQRScan: (url: string) => void;
   onRegisterPatient: (profileId: string) => void;
 }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<QueueTab>('walkin');
   const [showModal, setShowModal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
@@ -1074,14 +1201,6 @@ function QueuePage({
   const waiting = queue.filter(q => q.status === 'waiting').sort((a, b) => a.token_number - b.token_number);
   const inConsult = queue.find(q => q.status === 'in-consultation');
   const completed = queue.filter(q => q.status === 'completed').sort((a, b) => b.token_number - a.token_number);
-
-  // Today's scheduled appointments (not terminal)
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
-  const todayAppts = appointments.filter(a => {
-    const d = new Date(a.scheduled_at);
-    return d >= todayStart && d <= todayEnd;
-  }).sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
 
   const avgWait = waiting.length > 0
     ? Math.round(waiting.reduce((acc, item) => acc + (Date.now() - new Date(item.created_at).getTime()) / 60000, 0) / waiting.length)
@@ -1096,9 +1215,9 @@ function QueuePage({
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
-            <span className="text-xs font-bold text-orange-600 bg-orange-50 dark:bg-orange-900/30 px-3 py-1 rounded-full">{waiting.length} walk-ins waiting</span>
-            <span className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">{todayAppts.length} scheduled</span>
-            <span className="text-xs font-bold text-green-600 bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-full">{completed.length} done</span>
+            <span className="text-xs font-bold text-orange-600 bg-orange-50 dark:bg-orange-900/30 px-3 py-1 rounded-full">{waiting.length} in queue</span>
+            {inConsult && <span className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">1 in session</span>}
+            <span className="text-xs font-bold text-green-600 bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-full">{completed.length} seen</span>
           </div>
         </div>
         <div className="flex gap-2 flex-shrink-0">
@@ -1115,143 +1234,86 @@ function QueuePage({
         </div>
       </div>
 
-      {/* Tab switcher */}
-      <div className="flex gap-1.5 p-1 bg-gray-100 dark:bg-slate-800/80 rounded-2xl">
-        <button
-          onClick={() => setTab('walkin')}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all',
-            tab === 'walkin' ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400',
-          )}
-        >
-          <Hourglass className="w-4 h-4" />
-          Walk-in Queue
-          {waiting.length > 0 && (
-            <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-black', tab === 'walkin' ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 dark:bg-slate-700 text-gray-500')}>
-              {waiting.length + (inConsult ? 1 : 0)}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab('scheduled')}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all',
-            tab === 'scheduled' ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400',
-          )}
-        >
-          <CalendarCheck className="w-4 h-4" />
-          Scheduled Today
-          {todayAppts.length > 0 && (
-            <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-black', tab === 'scheduled' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 dark:bg-slate-700 text-gray-500')}>
-              {todayAppts.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Walk-in Queue tab */}
-      {tab === 'walkin' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse" />
-              <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-widest">Waiting ({waiting.length})</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main queue list */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse" />
+            <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-widest">
+              Waiting ({waiting.length})
+            </h3>
+          </div>
+          <AnimatePresence>
+            {waiting.map((item) => {
+              const handleStart = () => { onStartConsultation(item); navigate('/consultation'); };
+              return <WaitingCard key={item.id} item={item} onStart={handleStart} onRemove={() => onRemoveFromQueue(item.id)} />;
+            })}
+          </AnimatePresence>
+          {waiting.length === 0 && !inConsult && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-12 text-center">
+              <Hourglass className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+              <p className="text-sm font-medium text-gray-400">Queue is empty</p>
+              <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Walk-ins and confirmed appointments appear here</p>
+              <button onClick={() => setShowModal(true)} className="mt-4 text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 mx-auto">
+                <Plus className="w-3.5 h-3.5" />Add a walk-in patient
+              </button>
             </div>
-            <AnimatePresence>
-              {waiting.map((item) => {
-                const handleStart = () => { onStartConsultation(item); navigate('/consultation'); };
-                return <WaitingCard key={item.id} item={item} onStart={handleStart} onRemove={() => onRemoveFromQueue(item.id)} />;
-              })}
-            </AnimatePresence>
-            {waiting.length === 0 && !inConsult && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-12 text-center">
-                <Hourglass className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                <p className="text-sm font-medium text-gray-400">No walk-in patients waiting</p>
-                <button onClick={() => setShowModal(true)} className="mt-4 text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 mx-auto">
-                  <Plus className="w-3.5 h-3.5" />Add a walk-in patient
-                </button>
+          )}
+        </div>
+
+        {/* Right panel */}
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+              <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-widest">In Session</h3>
+            </div>
+            {inConsult ? (
+              <ConsultingCard item={inConsult} onOpen={() => navigate('/consultation')} />
+            ) : (
+              <div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-8 text-center">
+                <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+                <p className="text-xs font-medium text-gray-400">No active session</p>
               </div>
             )}
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-                <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-widest">In Session</h3>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 space-y-3">
+            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Today's Summary</h4>
+            {[
+              { label: 'Patients Seen', value: completed.length, icon: CheckCircle2, color: 'text-green-600' },
+              { label: 'Still Waiting', value: waiting.length, icon: Clock, color: 'text-orange-500' },
+              { label: 'Avg Wait Time', value: avgWait > 0 ? `${avgWait} min` : '—', icon: Timer, color: 'text-blue-600' },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <div key={label} className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                  <Icon className={cn('w-4 h-4', color)} />
+                  <span className="text-sm">{label}</span>
+                </div>
+                <span className="font-bold text-gray-900 dark:text-white text-sm">{value}</span>
               </div>
-              {inConsult ? (
-                <ConsultingCard item={inConsult} onOpen={() => navigate('/consultation')} />
-              ) : (
-                <div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-8 text-center">
-                  <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
-                  <p className="text-xs font-medium text-gray-400">No active session</p>
+            ))}
+          </div>
+
+          {completed.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden">
+              <button onClick={() => setShowCompleted(v => !v)}
+                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                  <span className="font-bold text-gray-900 dark:text-white text-sm">Seen Today ({completed.length})</span>
+                </div>
+                {showCompleted ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+              </button>
+              {showCompleted && (
+                <div className="px-4 pb-4 space-y-2 max-h-60 overflow-y-auto">
+                  {completed.map(item => <CompletedCard key={item.id} item={item} />)}
                 </div>
               )}
             </div>
-
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 space-y-3">
-              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Today's Summary</h4>
-              {[
-                { label: 'Patients Seen', value: completed.length, icon: CheckCircle2, color: 'text-green-600' },
-                { label: 'Still Waiting', value: waiting.length, icon: Clock, color: 'text-orange-500' },
-                { label: 'Avg Wait Time', value: avgWait > 0 ? `${avgWait} min` : '—', icon: Timer, color: 'text-blue-600' },
-              ].map(({ label, value, icon: Icon, color }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                    <Icon className={cn('w-4 h-4', color)} />
-                    <span className="text-sm">{label}</span>
-                  </div>
-                  <span className="font-bold text-gray-900 dark:text-white text-sm">{value}</span>
-                </div>
-              ))}
-            </div>
-
-            {completed.length > 0 && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden">
-                <button onClick={() => setShowCompleted(v => !v)}
-                  className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                    <span className="font-bold text-gray-900 dark:text-white text-sm">Completed ({completed.length})</span>
-                  </div>
-                  {showCompleted ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-                </button>
-                {showCompleted && (
-                  <div className="px-4 pb-4 space-y-2 max-h-60 overflow-y-auto">
-                    {completed.map(item => <CompletedCard key={item.id} item={item} />)}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          )}
         </div>
-      )}
-
-      {/* Scheduled Today tab */}
-      {tab === 'scheduled' && (
-        <AnimatePresence mode="wait">
-          <motion.div key="scheduled" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-            {todayAppts.length === 0 ? (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-16 text-center">
-                <CalendarCheck className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                <p className="text-sm font-medium text-gray-400">No appointments scheduled for today</p>
-                <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Confirmed appointments for today will appear here</p>
-              </div>
-            ) : (
-              todayAppts.map(appt => (
-                <AppointmentCard
-                  key={appt.id}
-                  appt={appt}
-                  onConfirm={onConfirmAppointment}
-                  onCancel={onCancelAppointment}
-                  onCheckIn={onCheckInAppointment}
-                />
-              ))
-            )}
-          </motion.div>
-        </AnimatePresence>
-      )}
+      </div>
 
       {showModal && <AddToQueueModal patients={patients} onAdd={onAddToQueue} onClose={() => setShowModal(false)} />}
 
@@ -1965,9 +2027,9 @@ function usePageMeta() {
   const firstName = doctorProfile?.full_name?.split(' ')[0] || 'Doctor';
   const titles: Record<string, { title: string; subtitle: string }> = {
     '/': { title: 'Dashboard', subtitle: `Good day, Dr. ${firstName}. Here is your clinic overview.` },
-    '/patients': { title: 'Patients', subtitle: 'Manage permanent patient records.' },
-    '/appointments': { title: 'Appointments', subtitle: 'View and manage all scheduled appointments.' },
-    '/queue': { title: "Today's Patients", subtitle: 'Manage walk-in queue and today\'s scheduled patients.' },
+    '/patients': { title: 'Patient Directory', subtitle: 'All registered patients with consultation history.' },
+    '/appointments': { title: 'Appointments', subtitle: 'Review new booking requests — confirmed ones move to Queue.' },
+    '/queue': { title: "Today's Queue", subtitle: 'All waiting patients (walk-ins and confirmed appointments).' },
     '/consultations': { title: 'Consultation History', subtitle: 'Review and reprint past consultation records.' },
     '/consultation': { title: 'New Consultation', subtitle: 'Complete the clinical record for this patient.' },
     '/record-view': { title: 'Record View', subtitle: 'Reviewing shared clinical documentation.' },
@@ -2025,12 +2087,11 @@ export default function App() {
 
   const fetchAppointments = useCallback(async () => {
     if (!doctorProfile) return;
+    // Fetch all statuses so the Appointments page can render pending + cancelled
     const { data } = await supabase
       .from('appointments')
       .select('*, patient:patients(*)')
       .eq('doctor_id', doctorProfile.id)
-      .neq('status', 'cancelled')
-      .neq('status', 'completed')
       .order('scheduled_at', { ascending: true });
     if (data) setAppointments(data as unknown as Appointment[]);
   }, [doctorProfile]);
@@ -2303,18 +2364,48 @@ export default function App() {
     fetchQueue();
   };
 
-  // ── Appointment: Confirm ───────────────────────────────────────────────────
+  // ── Appointment: Confirm → auto-create queue entry ────────────────────────
 
   const handleConfirmAppointment = async (appt: Appointment) => {
+    if (!doctorProfile) return;
     try {
-      // Update doctor-side mirror
+      // 1. Update doctor-side status
       await supabase.from('appointments').update({ status: 'confirmed' }).eq('id', appt.id);
-      // Write back to patient app (anon key + RLS policy validates packet)
+
+      // 2. Write back to patient app
       await patientSupabase
         .from('appointments')
         .update({ status: 'confirmed' })
         .eq('id', appt.patient_unicare_appointment_id);
+
+      // 3. Resolve / create local patient record
+      let patient = appt.patient_id
+        ? patients.find(p => p.id === appt.patient_id) ?? null
+        : patients.find(p => p.name === appt.patient_name) ?? null;
+
+      if (!patient) {
+        const { data: newP, error: pErr } = await supabase
+          .from('patients')
+          .insert({ doctor_id: doctorProfile.id, name: appt.patient_name, age: 0, gender: 'Not specified' })
+          .select()
+          .single();
+        if (pErr) throw pErr;
+        patient = newP as Patient;
+        fetchPatients();
+      }
+
+      // 4. Auto-create a queue entry (waiting) so confirmed appt appears in queue
+      const token = await getNextToken();
+      await supabase.from('queue').insert({
+        doctor_id: doctorProfile.id,
+        patient_id: patient!.id,
+        status: 'waiting',
+        token_number: token,
+        chief_complaint: appt.notes || '',
+      });
+
       fetchAppointments();
+      fetchQueue();
     } catch (err) {
       console.error('Error confirming appointment:', err);
     }
@@ -2621,13 +2712,9 @@ export default function App() {
               <QueuePage
                 queue={queue}
                 patients={patients}
-                appointments={appointments}
                 onStartConsultation={handleStartConsultation}
                 onRemoveFromQueue={handleRemoveFromQueue}
                 onAddToQueue={handleAddToQueue}
-                onConfirmAppointment={handleConfirmAppointment}
-                onCancelAppointment={handleCancelAppointment}
-                onCheckInAppointment={handleCheckInAppointment}
                 onQRScan={handleQRScan}
                 onRegisterPatient={handleRegisterPatient}
               />
@@ -2722,6 +2809,10 @@ function PageHeader({ onMenuClick }: { onMenuClick?: () => void }) {
 }
 
 // ─── AppointmentsPage ─────────────────────────────────────────────────────────
+//
+// Shows:
+//  • Pending section — new requests from UniCare, Confirm / Cancel actions
+//  • Cancelled section (collapsible CTA) — declined or cancelled appointments
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   pending:    { label: 'Pending Review',  color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',    dot: 'bg-amber-400' },
@@ -2850,57 +2941,12 @@ function AppointmentsPage({
   onCancel: (a: Appointment) => void;
   onCheckIn: (a: Appointment) => void;
 }) {
-  const [activeTab, setActiveTab] = React.useState<ApptTab>('pending');
-  // Fetch all appointments (including completed/cancelled) for the history tabs
-  const { doctorProfile } = useAuth();
-  const [allAppointments, setAllAppointments] = React.useState<Appointment[]>([]);
-  const [loadingHistory, setLoadingHistory] = React.useState(false);
+  const [showCancelled, setShowCancelled] = React.useState(false);
 
-  React.useEffect(() => {
-    if (!doctorProfile) return;
-    if (activeTab === 'completed' || activeTab === 'cancelled') {
-      setLoadingHistory(true);
-      supabase
-        .from('appointments')
-        .select('*')
-        .eq('doctor_id', doctorProfile.id)
-        .eq('status', activeTab)
-        .order('scheduled_at', { ascending: false })
-        .limit(50)
-        .then(({ data }) => {
-          setAllAppointments((data as unknown as Appointment[]) || []);
-          setLoadingHistory(false);
-        });
-    }
-  }, [activeTab, doctorProfile]);
-
-  const pending   = appointments.filter(a => a.status === 'pending');
-  const confirmed = appointments.filter(a => a.status === 'confirmed');
-  const checkedIn = appointments.filter(a => a.status === 'checked_in');
-
-  const tabs: { key: ApptTab; label: string; count: number | null; icon: React.ElementType; dotColor: string }[] = [
-    { key: 'pending',    label: 'Pending',    count: pending.length,   icon: Hourglass,     dotColor: 'bg-amber-400' },
-    { key: 'confirmed',  label: 'Confirmed',  count: confirmed.length, icon: CalendarCheck, dotColor: 'bg-blue-500' },
-    { key: 'checked_in', label: 'Active',     count: checkedIn.length, icon: Activity,      dotColor: 'bg-purple-500' },
-    { key: 'completed',  label: 'Completed',  count: null,             icon: CheckCircle2,  dotColor: 'bg-green-500' },
-    { key: 'cancelled',  label: 'Cancelled',  count: null,             icon: CalendarX,     dotColor: 'bg-red-400' },
-  ];
-
-  const getVisible = () => {
-    if (activeTab === 'pending')    return pending;
-    if (activeTab === 'confirmed')  return confirmed;
-    if (activeTab === 'checked_in') return checkedIn;
-    return allAppointments;
-  };
-  const visible = getVisible();
-
-  const emptyMessages: Record<ApptTab, { title: string; desc: string }> = {
-    pending:    { title: 'No pending appointments', desc: 'New bookings from UniCare patients will appear here for review.' },
-    confirmed:  { title: 'No confirmed appointments', desc: 'After you confirm a pending request, it moves here.' },
-    checked_in: { title: 'No active consultations', desc: 'Appointments move here when you click Check In.' },
-    completed:  { title: 'No completed appointments', desc: 'Appointments you have treated will appear here.' },
-    cancelled:  { title: 'No cancelled appointments', desc: 'Appointments that were declined or cancelled will appear here.' },
-  };
+  const pending   = appointments.filter(a => a.status === 'pending')
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  const cancelled = appointments.filter(a => a.status === 'cancelled')
+    .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
 
   return (
     <motion.div
@@ -2910,70 +2956,88 @@ function AppointmentsPage({
       exit={{ opacity: 0 }}
       className="space-y-6"
     >
-      {/* Inline Action Banner — tell doctor what to do */}
-      {pending.length > 0 && (
+      {/* Action banner */}
+      {pending.length > 0 ? (
         <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl">
           <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-amber-800 dark:text-amber-400">
-            <span className="font-bold">{pending.length} appointment{pending.length !== 1 ? 's' : ''}</span> awaiting your review. Confirm them so patients are notified, then check them in when they arrive.
+            <span className="font-bold">{pending.length} request{pending.length !== 1 ? 's' : ''}</span> awaiting review.
+            Confirm to add to queue — or cancel to decline.
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/40 rounded-2xl">
+          <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-green-800 dark:text-green-400">
+            All caught up! No pending requests. Confirmed appointments are visible in Queue.
           </p>
         </div>
       )}
 
-      {/* Tab bar */}
-      <div className="flex gap-1.5 p-1 bg-gray-100 dark:bg-slate-800/80 rounded-2xl overflow-x-auto">
-        {tabs.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              'flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all',
-              activeTab === tab.key
-                ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
-            )}
-          >
-            <span className={cn('w-2 h-2 rounded-full', tab.dotColor)} />
-            {tab.label}
-            {tab.count !== null && (
-              <span className={cn(
-                'ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-black',
-                activeTab === tab.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-gray-400',
-              )}>{tab.count}</span>
-            )}
-          </button>
-        ))}
+      {/* Pending section header */}
+      <div className="flex items-center gap-2">
+        <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+        <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-widest">
+          Pending Review ({pending.length})
+        </h3>
       </div>
 
-      {/* Cards list */}
-      <AnimatePresence mode="wait">
-        <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-          {loadingHistory ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-8 h-8 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
-            </div>
-          ) : visible.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 bg-gray-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4">
-                <Calendar className="w-8 h-8 text-gray-300 dark:text-slate-600" />
-              </div>
-              <p className="font-semibold text-gray-400 dark:text-slate-500">{emptyMessages[activeTab].title}</p>
-              <p className="text-sm text-gray-300 dark:text-slate-600 mt-1 max-w-xs">{emptyMessages[activeTab].desc}</p>
-            </div>
-          ) : (
-            visible.map(appt => (
-              <React.Fragment key={appt.id}>
-                <AppointmentCard
-                  appt={appt}
-                  onConfirm={onConfirm}
-                  onCancel={onCancel}
-                  onCheckIn={onCheckIn}
-                />
-              </React.Fragment>
-            ))
-          )}
-        </motion.div>
+      {/* Pending cards */}
+      <AnimatePresence mode="popLayout">
+        {pending.length === 0 ? (
+          <motion.div
+            key="empty-pending"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-12 text-center"
+          >
+            <Calendar className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+            <p className="text-sm font-medium text-gray-400">No pending requests</p>
+            <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">New bookings from UniCare patients will appear here</p>
+          </motion.div>
+        ) : (
+          pending.map(appt => (
+            <AppointmentCard
+              key={appt.id}
+              appt={appt}
+              onConfirm={onConfirm}
+              onCancel={onCancel}
+              onCheckIn={onCheckIn}
+            />
+          ))
+        )}
       </AnimatePresence>
+
+      {/* Cancelled collapsible section */}
+      {cancelled.length > 0 && (
+        <div className="mt-4">
+          <button
+            onClick={() => setShowCancelled(v => !v)}
+            className="flex items-center gap-2 text-sm font-bold text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors mb-3"
+          >
+            {showCancelled ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            <span className="w-2 h-2 rounded-full bg-red-400 inline-block" />
+            Cancelled / Declined ({cancelled.length})
+          </button>
+          <AnimatePresence>
+            {showCancelled && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="space-y-3 overflow-hidden"
+              >
+                {cancelled.map(appt => (
+                  <AppointmentCard
+                    key={appt.id}
+                    appt={appt}
+                    onConfirm={onConfirm}
+                    onCancel={onCancel}
+                    onCheckIn={onCheckIn}
+                  />
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </motion.div>
   );
 }

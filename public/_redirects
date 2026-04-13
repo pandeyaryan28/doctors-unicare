@@ -1,0 +1,12 @@
+/* Netlify / Cloudflare Pages / similar static hosts */
+/*  All routes → index.html so React Router handles routing */
+/* 200 = serve with 200 status (not a redirect) */
+/*  Fallback for SPA routing on static hosts */
+/* Netlify format */
+/* Serve index.html for all paths */
+/* This file is placed in /public so Vite copies it to /dist */
+/* ================================================================ */
+/* = Netlify _redirects — SPA fallback                            = */
+/* ================================================================ */
+/*    Source  Destination  Status */
+/*    /*      /index.html  200    */
