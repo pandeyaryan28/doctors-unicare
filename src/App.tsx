@@ -1473,6 +1473,25 @@ function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clinicCode, setClinicCode] = useState<string>('');
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
+
+  // Deterministic code: DR + first 4 hex chars of doctor UUID (always same, collision-free for clinic scale)
+  const generateClinicCode = (id: string) =>
+    'DR' + id.replace(/-/g, '').slice(0, 4).toUpperCase();
+
+  const bookingUrl = clinicCode
+    ? `https://unicare.vercel.app/book?d=${clinicCode}`
+    : '';
+
+  const copyToClipboard = async (text: string, type: 'code' | 'url') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (type === 'code') { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }
+      else { setUrlCopied(true); setTimeout(() => setUrlCopied(false), 2000); }
+    } catch {}
+  };
 
   useEffect(() => {
     if (doctorProfile) {
@@ -1486,6 +1505,26 @@ function ProfilePage() {
         phone: (doctorProfile as any).phone || '',
         avatar_url: doctorProfile.avatar_url || '',
       });
+
+      // Generate deterministic clinic code from doctor UUID
+      const code = (doctorProfile as any).clinic_code || generateClinicCode(doctorProfile.id);
+      setClinicCode(code);
+
+      // Persist code to doctors table if not already set
+      if (!(doctorProfile as any).clinic_code) {
+        supabase.from('doctors').update({ clinic_code: code }).eq('id', doctorProfile.id);
+      }
+
+      // Sync to UniCare's clinic_codes lookup so patients can resolve it
+      patientSupabase.from('clinic_codes').upsert({
+        code,
+        doctor_id: doctorProfile.id,
+        doctor_name: doctorProfile.full_name || '',
+        specialty: doctorProfile.specialty || '',
+        clinic_name: doctorProfile.clinic_name || '',
+        clinic_address: (doctorProfile as any).clinic_address || '',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'code' });
     }
   }, [doctorProfile]);
 
@@ -1515,6 +1554,7 @@ function ProfilePage() {
 
   return (
     <motion.div key="profile" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl mx-auto space-y-6">
+      {/* Hero banner */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-3xl p-8 text-white relative overflow-hidden">
         <div className="absolute -right-8 -top-8 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
         <div className="flex items-center gap-6 relative">
@@ -1528,6 +1568,94 @@ function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* ── Clinic Booking Code card ── */}
+      {clinicCode && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border-2 border-blue-100 dark:border-blue-900/50 shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 px-6 py-4 border-b border-blue-100 dark:border-blue-900/50 flex items-center gap-3">
+            <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Calendar className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 dark:text-white text-sm">Clinic Booking Code</h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Share this code or link — patients use it to book appointments with you</p>
+            </div>
+          </div>
+
+          <div className="p-6 flex flex-col sm:flex-row gap-6 items-center">
+            {/* QR Code */}
+            <div className="flex-shrink-0 flex flex-col items-center gap-2">
+              <div className="w-[130px] h-[130px] rounded-2xl overflow-hidden border-2 border-gray-100 dark:border-slate-700 bg-white p-1">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=128x128&margin=2&data=${encodeURIComponent(bookingUrl)}`}
+                  alt="Booking QR Code"
+                  className="w-full h-full"
+                />
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">Scan to book</p>
+            </div>
+
+            {/* Code + URL */}
+            <div className="flex-1 min-w-0 space-y-4 w-full">
+              {/* The code itself — big and prominent */}
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Clinic Code</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-5 py-3.5 flex items-center justify-between">
+                    <span className="text-2xl font-black tracking-[0.2em] text-blue-600 dark:text-blue-400 font-mono">
+                      {clinicCode}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-3">permanent</span>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(clinicCode, 'code')}
+                    className={cn(
+                      'flex-shrink-0 flex items-center gap-2 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all',
+                      codeCopied
+                        ? 'bg-green-600 text-white'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    )}
+                  >
+                    {codeCopied ? <CheckCircle2 className="w-4 h-4" /> : <ClipboardCheck className="w-4 h-4" />}
+                    {codeCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Booking URL */}
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Booking Link</p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2.5">
+                    <p className="text-xs text-gray-500 dark:text-slate-400 truncate font-mono">{bookingUrl}</p>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(bookingUrl, 'url')}
+                    className={cn(
+                      'flex-shrink-0 p-2.5 rounded-xl text-sm font-bold transition-all',
+                      urlCopied
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700'
+                        : 'bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-600 dark:text-gray-300'
+                    )}
+                    title="Copy link"
+                  >
+                    {urlCopied ? <CheckCircle2 className="w-4 h-4" /> : <ClipboardList className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Instruction hint */}
+              <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-900/40">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 dark:text-amber-400">
+                  Patients enter <strong>{clinicCode}</strong> in UniCare to book appointments directly with you. This code never changes.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm p-8 space-y-5">
         <div>
