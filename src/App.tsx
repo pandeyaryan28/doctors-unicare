@@ -1773,7 +1773,7 @@ export default function App() {
       .from('appointments')
       .select('*, patient:patients(*)')
       .eq('doctor_id', doctorProfile.id)
-      .not('status', 'in', '("cancelled","completed")')
+      .not('status', 'in', '(cancelled,completed)')
       .order('scheduled_at', { ascending: true });
     if (data) setAppointments(data as unknown as Appointment[]);
   }, [doctorProfile]);
@@ -1795,10 +1795,12 @@ export default function App() {
           patient_name: a.profiles?.name || a.title || 'Unknown Patient',
           scheduled_at: a.date,
           timezone: a.timezone || 'Asia/Kolkata',
-          status: a.status || 'pending',
+          // Map patient-side status ('upcoming') to doctor-side status ('pending')
+          status: a.status === 'upcoming' ? 'pending' : (a.status || 'pending'),
           notes: a.notes || null,
         }));
-        await supabase.from('appointments').upsert(toUpsert, { onConflict: 'appointments_patient_unicare_appointment_id_key' });
+        // onConflict must be the column name, not the constraint name
+        await supabase.from('appointments').upsert(toUpsert, { onConflict: 'patient_unicare_appointment_id' });
       }
     } catch (err) {
       console.error('Failed to sync patient appointments:', err);
