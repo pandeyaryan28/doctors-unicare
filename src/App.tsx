@@ -45,6 +45,9 @@ import {
   RefreshCw,
   Menu,
   Clock as ClockIcon,
+  QrCode,
+  ScanLine,
+  UserCheck,
 } from 'lucide-react';
 import { cn, calculateAge, formatDateTime } from './lib/utils';
 import { Patient, Consultation, QueueItem, PacketData, Medicine, Appointment, AppointmentStatus } from './types';
@@ -352,8 +355,8 @@ const Sidebar = ({
   const menuItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
     { label: 'Patients', icon: Users, path: '/patients' },
+    { label: 'Today\'s Patients', icon: Clock, path: '/queue' },
     { label: 'Appointments', icon: Calendar, path: '/appointments' },
-    { label: 'Queue', icon: Clock, path: '/queue' },
     { label: 'Consultations', icon: History, path: '/consultations' },
   ];
   const initials = doctorProfile?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'DR';
@@ -448,8 +451,8 @@ const Sidebar = ({
 const MobileBottomNav = ({ darkMode, onToggleTheme }: { darkMode: boolean; onToggleTheme: () => void }) => {
   const navItems = [
     { label: 'Home', icon: LayoutDashboard, path: '/' },
+    { label: 'Patients', icon: Clock, path: '/queue' },
     { label: 'Appts', icon: Calendar, path: '/appointments' },
-    { label: 'Queue', icon: Clock, path: '/queue' },
     { label: 'History', icon: History, path: '/consultations' },
     { label: darkMode ? 'Light' : 'Dark', icon: darkMode ? Sun : Moon, path: null },
   ];
@@ -509,30 +512,125 @@ const StatCard = ({ label, value, icon: Icon, color }: { label: string; value: s
   );
 };
 
-// ─── QR Scanner ──────────────────────────────────────────────────────────────
+// ─── QR Scanner Modal (Dual Mode) ────────────────────────────────────────────
 
-const QRScanner = ({ onScan }: { onScan: (url: string) => void }) => {
+type ScanMode = 'packet' | 'registration';
+
+interface QRScannerModalProps {
+  onScanPacket: (url: string) => void;
+  onScanRegistration: (profileId: string) => void;
+  onClose: () => void;
+}
+
+function QRScannerModal({ onScanPacket, onScanRegistration, onClose }: QRScannerModalProps) {
+  const [mode, setMode] = useState<ScanMode>('packet');
   const [input, setInput] = useState('');
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); if (input) { onScan(input); setInput(''); } };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+    if (mode === 'packet') {
+      onScanPacket(input.trim());
+    } else {
+      onScanRegistration(input.trim());
+    }
+    setInput('');
+    onClose();
+  };
+
   return (
-    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm">
-      <div className="flex items-center gap-4 mb-6">
-        <div className="p-3 bg-blue-50 dark:bg-blue-900/40 rounded-2xl text-blue-600 dark:text-blue-400"><FileSearch className="w-6 h-6" /></div>
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Import Health Packet</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Paste the patient's secure health packet URL</p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md border border-gray-100 dark:border-slate-800 overflow-hidden"
+      >
+        {/* Header */}
+        <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-50 dark:bg-blue-900/40 rounded-xl text-blue-600 dark:text-blue-400">
+              <QrCode className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Scan Patient QR</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Paste the scanned QR content below</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+            <X className="w-5 h-5 text-gray-400" />
+          </button>
         </div>
-      </div>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Paste packet URL here..."
-          className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-none rounded-2xl focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-white placeholder:text-gray-400" />
-        <button type="submit" disabled={!input} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all disabled:opacity-50">
-          Access Health Packet
-        </button>
-      </form>
+
+        {/* Mode selector */}
+        <div className="p-6 space-y-5">
+          <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 dark:bg-slate-800 rounded-2xl">
+            <button
+              onClick={() => { setMode('packet'); setInput(''); }}
+              className={cn(
+                'flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold transition-all',
+                mode === 'packet'
+                  ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700',
+              )}
+            >
+              <ScanLine className="w-4 h-4" />
+              Health Packet
+              <span className={cn('text-[9px] font-medium', mode === 'packet' ? 'text-blue-500' : 'text-gray-400')}>Dynamic — time-limited</span>
+            </button>
+            <button
+              onClick={() => { setMode('registration'); setInput(''); }}
+              className={cn(
+                'flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold transition-all',
+                mode === 'registration'
+                  ? 'bg-white dark:bg-slate-700 text-green-700 dark:text-green-300 shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700',
+              )}
+            >
+              <UserCheck className="w-4 h-4" />
+              Patient ID
+              <span className={cn('text-[9px] font-medium', mode === 'registration' ? 'text-green-500' : 'text-gray-400')}>Permanent — for registration</span>
+            </button>
+          </div>
+
+          {/* Context info */}
+          <div className={cn(
+            'p-3 rounded-xl text-xs leading-relaxed',
+            mode === 'packet'
+              ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+              : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300',
+          )}>
+            {mode === 'packet'
+              ? 'Scan the dynamic health packet QR from the patient\'s UniCare app. Loads full medical history, records and vitals for this consultation.'
+              : 'Scan the patient\'s permanent UniCare ID QR. Registers or retrieves the patient record and adds them to today\'s queue.'}
+          </div>
+
+          {/* Input */}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={mode === 'packet' ? 'Paste health packet URL...' : 'Paste patient profile ID (UUID)...'}
+              className="w-full px-4 py-3.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              className={cn(
+                'w-full py-3.5 rounded-2xl font-bold text-white text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50',
+                mode === 'packet' ? 'bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 dark:shadow-none' : 'bg-green-600 hover:bg-green-700 shadow-lg shadow-green-100 dark:shadow-none',
+              )}
+            >
+              {mode === 'packet' ? <><ScanLine className="w-4 h-4" />Load Health Packet</> : <><UserCheck className="w-4 h-4" />Register Patient</>}
+            </button>
+          </form>
+        </div>
+      </motion.div>
     </div>
   );
-};
+}
 
 // ─── Add Walk-in Modal ────────────────────────────────────────────────────────
 
@@ -741,13 +839,15 @@ const CompletedCard: React.FC<{ item: QueueItem }> = ({ item }) => {
 
 // ─── Page: Dashboard ─────────────────────────────────────────────────────────
 
-function DashboardPage({ patients, queue, onQRScan, onStartConsultation }: {
+function DashboardPage({ patients, queue, onQRScan, onRegisterPatient, onStartConsultation }: {
   patients: Patient[];
   queue: QueueItem[];
   onQRScan: (url: string) => void;
+  onRegisterPatient: (profileId: string) => void;
   onStartConsultation: (item: QueueItem) => void;
 }) {
   const navigate = useNavigate();
+  const [showScanner, setShowScanner] = useState(false);
   const waiting = queue.filter(q => q.status === 'waiting');
   const completed = queue.filter(q => q.status === 'completed');
   const inConsult = queue.find(q => q.status === 'in-consultation');
@@ -762,7 +862,50 @@ function DashboardPage({ patients, queue, onQRScan, onStartConsultation }: {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <QRScanner onScan={onQRScan} />
+        {/* QR Scan panel */}
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/40 rounded-2xl text-blue-600 dark:text-blue-400">
+              <QrCode className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">QR Patient Access</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Scan health packet or register a new patient</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setShowScanner(true)}
+              className="flex flex-col items-center gap-3 p-5 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 border-2 border-blue-100 dark:border-blue-800/50 rounded-2xl transition-all group"
+            >
+              <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200 dark:shadow-none group-hover:scale-105 transition-transform">
+                <ScanLine className="w-6 h-6 text-white" />
+              </div>
+              <div className="text-center">
+                <p className="font-bold text-blue-700 dark:text-blue-300 text-sm">Health Packet</p>
+                <p className="text-[10px] text-blue-500 dark:text-blue-400 mt-0.5">Dynamic medical history</p>
+              </div>
+            </button>
+            <button
+              onClick={() => setShowScanner(true)}
+              className="flex flex-col items-center gap-3 p-5 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 border-2 border-green-100 dark:border-green-800/50 rounded-2xl transition-all group"
+            >
+              <div className="w-12 h-12 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg shadow-green-200 dark:shadow-none group-hover:scale-105 transition-transform">
+                <UserCheck className="w-6 h-6 text-white" />
+              </div>
+              <div className="text-center">
+                <p className="font-bold text-green-700 dark:text-green-300 text-sm">Patient ID</p>
+                <p className="text-[10px] text-green-500 dark:text-green-400 mt-0.5">Permanent registration</p>
+              </div>
+            </button>
+          </div>
+          <button
+            onClick={() => setShowScanner(true)}
+            className="w-full mt-4 py-3 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl text-sm font-bold text-gray-400 dark:text-gray-500 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all flex items-center justify-center gap-2"
+          >
+            <QrCode className="w-4 h-4" />Open Scanner
+          </button>
+        </div>
 
         {/* Live Queue Preview */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm">
@@ -802,6 +945,16 @@ function DashboardPage({ patients, queue, onQRScan, onStartConsultation }: {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showScanner && (
+          <QRScannerModal
+            onScanPacket={(url) => { onQRScan(url); setShowScanner(false); }}
+            onScanRegistration={(id) => { onRegisterPatient(id); setShowScanner(false); }}
+            onClose={() => setShowScanner(false)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -892,22 +1045,43 @@ function PatientsPage({ patients, onSelectPatient }: { patients: Patient[]; onSe
   );
 }
 
-// ─── Page: Queue ──────────────────────────────────────────────────────────────
+// ─── Page: Today's Patients (Unified Queue + Scheduled) ──────────────────────
 
-function QueuePage({ queue, patients, onStartConsultation, onRemoveFromQueue, onAddToQueue }: {
+type QueueTab = 'walkin' | 'scheduled';
+
+function QueuePage({
+  queue, patients, appointments, onStartConsultation, onRemoveFromQueue, onAddToQueue,
+  onConfirmAppointment, onCancelAppointment, onCheckInAppointment, onQRScan, onRegisterPatient,
+}: {
   queue: QueueItem[];
   patients: Patient[];
+  appointments: Appointment[];
   onStartConsultation: (item: QueueItem) => void;
   onRemoveFromQueue: (id: string) => void;
   onAddToQueue: (patientId: string, complaint: string, newPatient?: Omit<Patient, 'id'>) => Promise<void>;
+  onConfirmAppointment: (a: Appointment) => void;
+  onCancelAppointment: (a: Appointment) => void;
+  onCheckInAppointment: (a: Appointment) => void;
+  onQRScan: (url: string) => void;
+  onRegisterPatient: (profileId: string) => void;
 }) {
   const navigate = useNavigate();
+  const [tab, setTab] = useState<QueueTab>('walkin');
   const [showModal, setShowModal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const waiting = queue.filter(q => q.status === 'waiting').sort((a, b) => a.token_number - b.token_number);
   const inConsult = queue.find(q => q.status === 'in-consultation');
   const completed = queue.filter(q => q.status === 'completed').sort((a, b) => b.token_number - a.token_number);
+
+  // Today's scheduled appointments (not terminal)
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+  const todayAppts = appointments.filter(a => {
+    const d = new Date(a.scheduled_at);
+    return d >= todayStart && d <= todayEnd;
+  }).sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
 
   const avgWait = waiting.length > 0
     ? Math.round(waiting.reduce((acc, item) => acc + (Date.now() - new Date(item.created_at).getTime()) / 60000, 0) / waiting.length)
@@ -915,121 +1089,181 @@ function QueuePage({ queue, patients, onStartConsultation, onRemoveFromQueue, on
 
   return (
     <motion.div key="queue" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      {/* Queue header bar */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-4">
         <div className="flex-1">
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
-          <div className="flex items-center gap-4 mt-1 flex-wrap">
-            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-800 px-3 py-1 rounded-full">
-              {queue.length} total
-            </span>
-            <span className="text-xs font-bold text-orange-600 bg-orange-50 dark:bg-orange-900/30 px-3 py-1 rounded-full">
-              {waiting.length} waiting
-            </span>
-            {inConsult && (
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">
-                1 in consultation
-              </span>
-            )}
-            <span className="text-xs font-bold text-green-600 bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-full">
-              {completed.length} done
-            </span>
-            {avgWait > 0 && (
-              <span className="text-xs font-medium text-gray-400">· Avg wait: {avgWait} min</span>
-            )}
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <span className="text-xs font-bold text-orange-600 bg-orange-50 dark:bg-orange-900/30 px-3 py-1 rounded-full">{waiting.length} walk-ins waiting</span>
+            <span className="text-xs font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">{todayAppts.length} scheduled</span>
+            <span className="text-xs font-bold text-green-600 bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-full">{completed.length} done</span>
           </div>
         </div>
-        <button onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all text-sm flex-shrink-0">
-          <UserPlus className="w-4 h-4" />Add Patient
+        <div className="flex gap-2 flex-shrink-0">
+          <button
+            onClick={() => setShowScanner(true)}
+            className="flex items-center gap-2 px-4 py-3 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-gray-300 rounded-2xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-slate-700 transition-all"
+          >
+            <QrCode className="w-4 h-4" />Scan
+          </button>
+          <button onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 dark:shadow-none hover:bg-blue-700 transition-all text-sm">
+            <UserPlus className="w-4 h-4" />Add Walk-in
+          </button>
+        </div>
+      </div>
+
+      {/* Tab switcher */}
+      <div className="flex gap-1.5 p-1 bg-gray-100 dark:bg-slate-800/80 rounded-2xl">
+        <button
+          onClick={() => setTab('walkin')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all',
+            tab === 'walkin' ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400',
+          )}
+        >
+          <Hourglass className="w-4 h-4" />
+          Walk-in Queue
+          {waiting.length > 0 && (
+            <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-black', tab === 'walkin' ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 dark:bg-slate-700 text-gray-500')}>
+              {waiting.length + (inConsult ? 1 : 0)}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setTab('scheduled')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all',
+            tab === 'scheduled' ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400',
+          )}
+        >
+          <CalendarCheck className="w-4 h-4" />
+          Scheduled Today
+          {todayAppts.length > 0 && (
+            <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-black', tab === 'scheduled' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 dark:bg-slate-700 text-gray-500')}>
+              {todayAppts.length}
+            </span>
+          )}
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Waiting column */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse" />
-            <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-widest">Waiting ({waiting.length})</h3>
-          </div>
-          <AnimatePresence>
-            {waiting.map((item) => {
-              const handleStart = () => { onStartConsultation(item); navigate('/consultation'); };
-              const handleRemove = () => onRemoveFromQueue(item.id);
-              return <WaitingCard key={item.id} item={item} onStart={handleStart} onRemove={handleRemove} />;
-            })}
-          </AnimatePresence>
-          {waiting.length === 0 && (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-12 text-center">
-              <Hourglass className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-              <p className="text-sm font-medium text-gray-400">No patients waiting</p>
-              <button onClick={() => setShowModal(true)} className="mt-4 text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 mx-auto">
-                <Plus className="w-3.5 h-3.5" />Add a walk-in patient
-              </button>
+      {/* Walk-in Queue tab */}
+      {tab === 'walkin' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse" />
+              <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-widest">Waiting ({waiting.length})</h3>
             </div>
-          )}
-        </div>
-
-        {/* Right column: In Consultation + Stats */}
-        <div className="space-y-4">
-          {/* In consultation */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-              <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-widest">In Session</h3>
-            </div>
-            {inConsult ? (
-              <ConsultingCard item={inConsult} onOpen={() => navigate('/consultation')} />
-            ) : (
-              <div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-8 text-center">
-                <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
-                <p className="text-xs font-medium text-gray-400">No active session</p>
+            <AnimatePresence>
+              {waiting.map((item) => {
+                const handleStart = () => { onStartConsultation(item); navigate('/consultation'); };
+                return <WaitingCard key={item.id} item={item} onStart={handleStart} onRemove={() => onRemoveFromQueue(item.id)} />;
+              })}
+            </AnimatePresence>
+            {waiting.length === 0 && !inConsult && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-12 text-center">
+                <Hourglass className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+                <p className="text-sm font-medium text-gray-400">No walk-in patients waiting</p>
+                <button onClick={() => setShowModal(true)} className="mt-4 text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 mx-auto">
+                  <Plus className="w-3.5 h-3.5" />Add a walk-in patient
+                </button>
               </div>
             )}
           </div>
 
-          {/* Quick stats */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 space-y-3">
-            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Today's Summary</h4>
-            {[
-              { label: 'Patients Seen', value: completed.length, icon: CheckCircle2, color: 'text-green-600' },
-              { label: 'Still Waiting', value: waiting.length, icon: Clock, color: 'text-orange-500' },
-              { label: 'Avg Wait Time', value: avgWait > 0 ? `${avgWait} min` : '—', icon: Timer, color: 'text-blue-600' },
-            ].map(({ label, value, icon: Icon, color }) => (
-              <div key={label} className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                  <Icon className={cn("w-4 h-4", color)} />
-                  <span className="text-sm">{label}</span>
-                </div>
-                <span className="font-bold text-gray-900 dark:text-white text-sm">{value}</span>
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                <h3 className="font-bold text-gray-900 dark:text-white text-sm uppercase tracking-widest">In Session</h3>
               </div>
-            ))}
-          </div>
-
-          {/* Completed (collapsible) */}
-          {completed.length > 0 && (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden">
-              <button onClick={() => setShowCompleted(v => !v)}
-                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                  <span className="font-bold text-gray-900 dark:text-white text-sm">Completed ({completed.length})</span>
-                </div>
-                {showCompleted ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-              </button>
-              {showCompleted && (
-                <div className="px-4 pb-4 space-y-2 max-h-60 overflow-y-auto">
-                  {completed.map(item => <CompletedCard key={item.id} item={item} />)}
+              {inConsult ? (
+                <ConsultingCard item={inConsult} onOpen={() => navigate('/consultation')} />
+              ) : (
+                <div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-8 text-center">
+                  <Activity className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+                  <p className="text-xs font-medium text-gray-400">No active session</p>
                 </div>
               )}
             </div>
-          )}
+
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 p-5 space-y-3">
+              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Today's Summary</h4>
+              {[
+                { label: 'Patients Seen', value: completed.length, icon: CheckCircle2, color: 'text-green-600' },
+                { label: 'Still Waiting', value: waiting.length, icon: Clock, color: 'text-orange-500' },
+                { label: 'Avg Wait Time', value: avgWait > 0 ? `${avgWait} min` : '—', icon: Timer, color: 'text-blue-600' },
+              ].map(({ label, value, icon: Icon, color }) => (
+                <div key={label} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <Icon className={cn('w-4 h-4', color)} />
+                    <span className="text-sm">{label}</span>
+                  </div>
+                  <span className="font-bold text-gray-900 dark:text-white text-sm">{value}</span>
+                </div>
+              ))}
+            </div>
+
+            {completed.length > 0 && (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden">
+                <button onClick={() => setShowCompleted(v => !v)}
+                  className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                    <span className="font-bold text-gray-900 dark:text-white text-sm">Completed ({completed.length})</span>
+                  </div>
+                  {showCompleted ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                </button>
+                {showCompleted && (
+                  <div className="px-4 pb-4 space-y-2 max-h-60 overflow-y-auto">
+                    {completed.map(item => <CompletedCard key={item.id} item={item} />)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Scheduled Today tab */}
+      {tab === 'scheduled' && (
+        <AnimatePresence mode="wait">
+          <motion.div key="scheduled" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+            {todayAppts.length === 0 ? (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-gray-100 dark:border-slate-800 p-16 text-center">
+                <CalendarCheck className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+                <p className="text-sm font-medium text-gray-400">No appointments scheduled for today</p>
+                <p className="text-xs text-gray-300 dark:text-gray-600 mt-1">Confirmed appointments for today will appear here</p>
+              </div>
+            ) : (
+              todayAppts.map(appt => (
+                <AppointmentCard
+                  key={appt.id}
+                  appt={appt}
+                  onConfirm={onConfirmAppointment}
+                  onCancel={onCancelAppointment}
+                  onCheckIn={onCheckInAppointment}
+                />
+              ))
+            )}
+          </motion.div>
+        </AnimatePresence>
+      )}
 
       {showModal && <AddToQueueModal patients={patients} onAdd={onAddToQueue} onClose={() => setShowModal(false)} />}
+
+      <AnimatePresence>
+        {showScanner && (
+          <QRScannerModal
+            onScanPacket={(url) => { onQRScan(url); setShowScanner(false); }}
+            onScanRegistration={(id) => { onRegisterPatient(id); setShowScanner(false); }}
+            onClose={() => setShowScanner(false)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -1310,7 +1544,18 @@ function ConsultationPage({
       });
   }, [selectedPatient]);
 
-  if (!selectedPatient) return <Navigate to="/" replace />;
+  if (!selectedPatient) return (
+    <motion.div key="no-patient" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-32 space-y-4 text-center">
+      <div className="w-20 h-20 bg-gray-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center">
+        <Users className="w-10 h-10 text-gray-300 dark:text-gray-600" />
+      </div>
+      <h3 className="text-xl font-bold text-gray-900 dark:text-white">No Patient Selected</h3>
+      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">Start a consultation from the queue or use the QR scanner to load a patient.</p>
+      <button onClick={() => navigate('/queue')} className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 dark:shadow-none">
+        <Clock className="w-4 h-4" />Go to Today's Patients
+      </button>
+    </motion.div>
+  );
 
   const bloodGroup = selectedPatient.blood_group || packetData?.profile_data?.blood_group || '—';
 
@@ -1457,7 +1702,18 @@ function ConsultationPage({
 
 function RecordViewPage({ packetData, setSelectedRecord }: { packetData: PacketData | null; setSelectedRecord: (r: any) => void }) {
   const navigate = useNavigate();
-  if (!packetData) return <Navigate to="/consultation" replace />;
+  if (!packetData) return (
+    <motion.div key="no-packet" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-32 space-y-4 text-center">
+      <div className="w-20 h-20 bg-gray-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center">
+        <FileSearch className="w-10 h-10 text-gray-300 dark:text-gray-600" />
+      </div>
+      <h3 className="text-xl font-bold text-gray-900 dark:text-white">No Health Packet Loaded</h3>
+      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">Scan a patient's dynamic QR code to load their medical records here.</p>
+      <button onClick={() => navigate('/consultation')} className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-all">
+        <ArrowLeft className="w-4 h-4" />Back to Consultation
+      </button>
+    </motion.div>
+  );
   return (
     <motion.div key="record-view" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
       <PatientRecordView packet={packetData} onClose={() => navigate('/consultation')} onPreview={setSelectedRecord} />
@@ -1710,8 +1966,8 @@ function usePageMeta() {
   const titles: Record<string, { title: string; subtitle: string }> = {
     '/': { title: 'Dashboard', subtitle: `Good day, Dr. ${firstName}. Here is your clinic overview.` },
     '/patients': { title: 'Patients', subtitle: 'Manage permanent patient records.' },
-    '/appointments': { title: 'Appointments', subtitle: 'Manage scheduled appointments and check patients in.' },
-    '/queue': { title: "Today's Queue", subtitle: 'Manage patient flow and call next in line.' },
+    '/appointments': { title: 'Appointments', subtitle: 'View and manage all scheduled appointments.' },
+    '/queue': { title: "Today's Patients", subtitle: 'Manage walk-in queue and today\'s scheduled patients.' },
     '/consultations': { title: 'Consultation History', subtitle: 'Review and reprint past consultation records.' },
     '/consultation': { title: 'New Consultation', subtitle: 'Complete the clinical record for this patient.' },
     '/record-view': { title: 'Record View', subtitle: 'Reviewing shared clinical documentation.' },
@@ -1773,7 +2029,8 @@ export default function App() {
       .from('appointments')
       .select('*, patient:patients(*)')
       .eq('doctor_id', doctorProfile.id)
-      .not('status', 'in', '(cancelled,completed)')
+      .neq('status', 'cancelled')
+      .neq('status', 'completed')
       .order('scheduled_at', { ascending: true });
     if (data) setAppointments(data as unknown as Appointment[]);
   }, [doctorProfile]);
@@ -1798,8 +2055,9 @@ export default function App() {
           // Map patient-side status ('upcoming') to doctor-side status ('pending')
           status: a.status === 'upcoming' ? 'pending' : (a.status || 'pending'),
           notes: a.notes || null,
+          // Sync the shared_packet_id so doctor can load health data at check-in
+          shared_packet_id: a.shared_packet_id || null,
         }));
-        // onConflict must be the column name, not the constraint name
         await supabase.from('appointments').upsert(toUpsert, { onConflict: 'patient_unicare_appointment_id' });
       }
     } catch (err) {
@@ -1947,6 +2205,60 @@ export default function App() {
     }
   };
 
+  // ── Register Patient via Permanent QR ─────────────────────────────────────
+  // Accepts a UniCare profile_id UUID, fetches their details, creates/finds
+  // a local patient record, then adds them to today's walk-in queue.
+
+  const handleRegisterPatient = async (profileId: string) => {
+    if (!doctorProfile) return;
+    setScanLoading(true); setScanError(null);
+    try {
+      if (!profileId || profileId.length < 10) throw new Error('Invalid patient ID format');
+
+      const { data: profile, error: profileError } = await patientSupabase
+        .from('profiles').select('*').eq('id', profileId).single();
+      if (profileError || !profile) throw new Error('Patient profile not found in UniCare');
+
+      // Find by phone first (most reliable), then by name
+      let patient = patients.find(p =>
+        (profile.phone && p.phone === profile.phone) || p.name === profile.name
+      );
+
+      if (!patient) {
+        const { data: newP, error: pErr } = await supabase.from('patients').insert({
+          doctor_id: doctorProfile.id,
+          name: profile.name,
+          age: profile.dob ? calculateAge(profile.dob) : 0,
+          gender: profile.gender || 'Not specified',
+          phone: profile.phone || null,
+          email: profile.email || null,
+          abha_id: profile.abha_id || null,
+          address: profile.address || null,
+          blood_group: profile.blood_group || null,
+        }).select().single();
+        if (pErr) throw pErr;
+        patient = newP as Patient;
+        fetchPatients();
+      }
+
+      const token = await getNextToken();
+      await supabase.from('queue').insert({
+        doctor_id: doctorProfile.id,
+        patient_id: patient!.id,
+        status: 'waiting',
+        token_number: token,
+        chief_complaint: '',
+      });
+
+      fetchQueue();
+      navigate('/queue');
+    } catch (err: any) {
+      setScanError(err.message || 'Could not register patient');
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
   // ── Start Consultation from Queue ──────────────────────────────────────────
 
   const handleStartConsultation = async (item: QueueItem) => {
@@ -2025,6 +2337,7 @@ export default function App() {
 
   // ── Appointment: Check In → Queue ──────────────────────────────────────────
   // Creates a queue entry, links it, and opens the consultation form.
+  // Also loads the health packet if one was attached to the appointment.
 
   const handleCheckInAppointment = async (appt: Appointment) => {
     if (!doctorProfile) return;
@@ -2052,13 +2365,69 @@ export default function App() {
         fetchPatients();
       }
 
+      // ── Load health packet if attached to this appointment ─────────────────
+      const packetId = (appt as any).shared_packet_id;
+      if (packetId) {
+        try {
+          setScanLoading(true);
+          const { data: packet } = await patientSupabase.from('shared_packets').select('*').eq('id', packetId).single();
+          if (packet && !(packet.expires_at && new Date(packet.expires_at) < new Date())) {
+            const { data: profile } = await patientSupabase.from('profiles').select('*').eq('id', packet.profile_id).single();
+            if (profile) {
+              let medicalHistory: any[] = [];
+              if (packet.share_medical_history) {
+                const { data: history } = await patientSupabase.from('medical_history').select('*').eq('profile_id', profile.id);
+                medicalHistory = history || [];
+              }
+              const { data: recordLinks } = await patientSupabase.from('shared_packet_records').select('record_id').eq('packet_id', packetId);
+              let records: any[] = [];
+              if (recordLinks && recordLinks.length > 0) {
+                const { data: recordsData } = await patientSupabase.from('records').select('*').in('id', recordLinks.map((l: any) => l.record_id));
+                records = recordsData || [];
+              }
+              const fetchedPacket: PacketData = {
+                id: packet.id, title: packet.title || 'Health Packet', expires_at: packet.expires_at || '',
+                profile_data: {
+                  name: profile.name, dob: profile.dob, gender: profile.gender || 'Not specified',
+                  blood_group: profile.blood_group || 'Unknown', abha_id: profile.abha_id || '',
+                  phone: profile.phone || '', email: profile.email || '', address: profile.address || '',
+                },
+                medical_history: medicalHistory.map(h => ({
+                  question_id: h.question_id,
+                  question: h.question_id.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+                  answer: h.answer,
+                })),
+                records: records.map(r => ({
+                  id: r.id, title: r.title, date: r.date, provider: r.provider, type: r.type,
+                  file_name: r.file_name, file_type: r.file_type,
+                  file_url: `https://vtuujzlscnxiyxokxntk.supabase.co/storage/v1/object/public/medical-records/${r.file_url}`,
+                })),
+              };
+              setPacketData(fetchedPacket);
+              // Update patient with profile data if richer info available
+              if (profile.blood_group || profile.phone) {
+                await supabase.from('patients').update({
+                  blood_group: profile.blood_group || undefined,
+                  phone: profile.phone || undefined,
+                  email: profile.email || undefined,
+                }).eq('id', patient!.id);
+              }
+            }
+          }
+        } catch (pErr) {
+          console.warn('Could not load health packet for appointment:', pErr);
+        } finally {
+          setScanLoading(false);
+        }
+      }
+
       // Create queue entry
       const token = await getNextToken();
       const { data: qEntry, error: qErr } = await supabase
         .from('queue')
         .insert({
           doctor_id: doctorProfile.id,
-          patient_id: patient.id,
+          patient_id: patient!.id,
           status: 'in-consultation',
           token_number: token,
           chief_complaint: appt.notes || '',
@@ -2071,7 +2440,7 @@ export default function App() {
       // Link queue_id back to doctor-side appointment + update patient_id if resolved
       await supabase
         .from('appointments')
-        .update({ status: 'checked_in', queue_id: qEntry.id, patient_id: patient.id })
+        .update({ status: 'checked_in', queue_id: qEntry.id, patient_id: patient!.id })
         .eq('id', appt.id);
 
       // Writeback to patient app
@@ -2080,10 +2449,10 @@ export default function App() {
         .update({ status: 'checked_in', queue_id: qEntry.id })
         .eq('id', appt.patient_unicare_appointment_id);
 
-      const updatedAppt: Appointment = { ...appt, status: 'checked_in', queue_id: qEntry.id, patient_id: patient.id };
+      const updatedAppt: Appointment = { ...appt, status: 'checked_in', queue_id: qEntry.id, patient_id: patient!.id };
       setActiveAppointment(updatedAppt);
       setActiveQueueItem(qEntry as unknown as QueueItem);
-      setSelectedPatient(patient);
+      setSelectedPatient(patient!);
       fetchQueue();
       fetchAppointments();
       navigate('/consultation');
@@ -2237,7 +2606,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           <Routes>
             <Route path="/" element={
-              <DashboardPage patients={patients} queue={queue} onQRScan={handleQRScan} onStartConsultation={handleStartConsultation} />
+              <DashboardPage patients={patients} queue={queue} onQRScan={handleQRScan} onRegisterPatient={handleRegisterPatient} onStartConsultation={handleStartConsultation} />
             } />
             <Route path="/patients" element={<PatientsPage patients={patients} onSelectPatient={setSelectedPatient} />} />
             <Route path="/appointments" element={
@@ -2249,7 +2618,19 @@ export default function App() {
               />
             } />
             <Route path="/queue" element={
-              <QueuePage queue={queue} patients={patients} onStartConsultation={handleStartConsultation} onRemoveFromQueue={handleRemoveFromQueue} onAddToQueue={handleAddToQueue} />
+              <QueuePage
+                queue={queue}
+                patients={patients}
+                appointments={appointments}
+                onStartConsultation={handleStartConsultation}
+                onRemoveFromQueue={handleRemoveFromQueue}
+                onAddToQueue={handleAddToQueue}
+                onConfirmAppointment={handleConfirmAppointment}
+                onCancelAppointment={handleCancelAppointment}
+                onCheckInAppointment={handleCheckInAppointment}
+                onQRScan={handleQRScan}
+                onRegisterPatient={handleRegisterPatient}
+              />
             } />
             <Route path="/consultations" element={<ConsultationsPage />} />
             <Route path="/consultation" element={
