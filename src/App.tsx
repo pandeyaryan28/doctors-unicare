@@ -1794,11 +1794,11 @@ export default function App() {
           profile_id: a.profile_id,
           patient_name: a.profiles?.name || a.title || 'Unknown Patient',
           scheduled_at: a.date,
-          timezone: a.timezone,
-          status: a.status,
-          notes: a.notes,
+          timezone: a.timezone || 'Asia/Kolkata',
+          status: a.status || 'pending',
+          notes: a.notes || null,
         }));
-        await supabase.from('appointments').upsert(toUpsert, { onConflict: 'patient_unicare_appointment_id' });
+        await supabase.from('appointments').upsert(toUpsert, { onConflict: 'appointments_patient_unicare_appointment_id_key' });
       }
     } catch (err) {
       console.error('Failed to sync patient appointments:', err);
