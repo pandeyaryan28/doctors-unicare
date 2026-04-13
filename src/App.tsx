@@ -2072,10 +2072,17 @@ export default function App() {
       .gte('created_at', today.toISOString())
       .order('token_number', { ascending: true });
     if (data) {
-      setQueue(data as unknown as QueueItem[]);
-      // Keep activeQueueItem in sync
-      const inConsult = (data as unknown as QueueItem[]).find(q => q.status === 'in-consultation');
-      if (inConsult) setActiveQueueItem(inConsult);
+      const queueData = data as unknown as QueueItem[];
+      setQueue(queueData);
+      
+      // Auto-restore active session state if found
+      const inConsult = queueData.find(q => q.status === 'in-consultation');
+      if (inConsult) {
+        setActiveQueueItem(inConsult);
+        if (inConsult.patient) {
+          setSelectedPatient(inConsult.patient);
+        }
+      }
     }
   }, [doctorProfile]);
 
@@ -2886,24 +2893,6 @@ function AppointmentCard({
                 onClick={() => onCancel(appt)}
                 className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 rounded-xl transition-colors"
                 title="Decline appointment"
-              >
-                <CalendarX className="w-4 h-4" />
-              </button>
-            </>
-          )}
-          {appt.status === 'confirmed' && (
-            <>
-              <button
-                onClick={() => onCheckIn(appt)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition-colors"
-                title="Patient has arrived — begin consultation"
-              >
-                <CheckCircle2 className="w-4 h-4" />Check In
-              </button>
-              <button
-                onClick={() => onCancel(appt)}
-                className="p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 rounded-xl transition-colors"
-                title="Cancel appointment"
               >
                 <CalendarX className="w-4 h-4" />
               </button>
