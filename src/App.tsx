@@ -2123,8 +2123,8 @@ export default function App() {
           // Map patient-side status ('upcoming') to doctor-side status ('pending')
           status: a.status === 'upcoming' ? 'pending' : (a.status || 'pending'),
           notes: a.notes || null,
-          // Sync the shared_packet_id so doctor can load health data at check-in
-          shared_packet_id: a.shared_packet_id || null,
+          // BUG FIX: patient app column is 'packet_id', not 'shared_packet_id'
+          shared_packet_id: a.packet_id || null,
         }));
         await supabase.from('appointments').upsert(toUpsert, { onConflict: 'patient_unicare_appointment_id' });
       }
@@ -2328,6 +2328,9 @@ export default function App() {
   };
 
   // ── Start Consultation from Queue ──────────────────────────────────────────
+  // BUG FIX: Now also resolves activeAppointment from linked appointment (if any),
+  // updates patient DB status to 'checked_in', and loads packet data — mirroring
+  // the behaviour that previously only existed in the check-in path.
 
   const handleStartConsultation = async (item: QueueItem) => {
     try {
@@ -2337,10 +2340,85 @@ export default function App() {
         setScanError(`Please complete ${currentInConsult.patient?.name}'s consultation first`);
         return;
       }
+
       await supabase.from('queue').update({ status: 'in-consultation', called_at: new Date().toISOString() }).eq('id', item.id);
       const updatedItem = { ...item, status: 'in-consultation' as const, called_at: new Date().toISOString() };
       setActiveQueueItem(updatedItem);
       setSelectedPatient(item.patient!);
+
+      // ── Resolve linked appointment (if any) ──────────────────────────────
+      // Appointments created via confirm flow now store queue_id, so we can
+      // look them up here and bind activeAppointment for save writeback.
+      const { data: linkedAppt } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('queue_id', item.id)
+        .maybeSingle();
+
+      if (linkedAppt) {
+        setActiveAppointment(linkedAppt as unknown as Appointment);
+
+        // Update patient DB status → 'checked_in' so patient sees active session
+        if (linkedAppt.patient_unicare_appointment_id) {
+          const { error: startWritebackErr } = await patientSupabase
+            .from('appointments')
+            .update({ status: 'checked_in' })
+            .eq('id', linkedAppt.patient_unicare_appointment_id);
+          if (startWritebackErr) {
+            console.error('Patient DB start writeback failed (RLS/auth):', startWritebackErr);
+            setScanError(`Warning: Session started, but patient status sync failed: ${startWritebackErr.message}`);
+          }
+        }
+
+        // ── Load health packet if one was attached to appointment ───────────
+        const packetId = linkedAppt.shared_packet_id;
+        if (packetId) {
+          try {
+            setScanLoading(true);
+            const { data: packet } = await patientSupabase.from('shared_packets').select('*').eq('id', packetId).single();
+            if (packet && !(packet.expires_at && new Date(packet.expires_at) < new Date())) {
+              const { data: profile } = await patientSupabase.from('profiles').select('*').eq('id', packet.profile_id).single();
+              if (profile) {
+                let medicalHistory: any[] = [];
+                if (packet.share_medical_history) {
+                  const { data: history } = await patientSupabase.from('medical_history').select('*').eq('profile_id', profile.id);
+                  medicalHistory = history || [];
+                }
+                const { data: recordLinks } = await patientSupabase.from('shared_packet_records').select('record_id').eq('packet_id', packetId);
+                let records: any[] = [];
+                if (recordLinks && recordLinks.length > 0) {
+                  const { data: recordsData } = await patientSupabase.from('records').select('*').in('id', recordLinks.map((l: any) => l.record_id));
+                  records = recordsData || [];
+                }
+                const fetchedPacket: PacketData = {
+                  id: packet.id, title: packet.title || 'Health Packet', expires_at: packet.expires_at || '',
+                  profile_data: {
+                    name: profile.name, dob: profile.dob, gender: profile.gender || 'Not specified',
+                    blood_group: profile.blood_group || 'Unknown', abha_id: profile.abha_id || '',
+                    phone: profile.phone || '', email: profile.email || '', address: profile.address || '',
+                  },
+                  medical_history: medicalHistory.map(h => ({
+                    question_id: h.question_id,
+                    question: h.question_id.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+                    answer: h.answer,
+                  })),
+                  records: records.map(r => ({
+                    id: r.id, title: r.title, date: r.date, provider: r.provider, type: r.type,
+                    file_name: r.file_name, file_type: r.file_type,
+                    file_url: `https://vtuujzlscnxiyxokxntk.supabase.co/storage/v1/object/public/medical-records/${r.file_url}`,
+                  })),
+                };
+                setPacketData(fetchedPacket);
+              }
+            }
+          } catch (pErr) {
+            console.warn('Could not load health packet for queue-start:', pErr);
+          } finally {
+            setScanLoading(false);
+          }
+        }
+      }
+
       fetchQueue();
       navigate('/consultation');
     } catch (err) {
@@ -2379,11 +2457,15 @@ export default function App() {
       // 1. Update doctor-side status
       await supabase.from('appointments').update({ status: 'confirmed' }).eq('id', appt.id);
 
-      // 2. Write back to patient app
-      await patientSupabase
+      // 2. Write back to patient app — check error so failures are visible
+      const { error: confirmWritebackErr } = await patientSupabase
         .from('appointments')
         .update({ status: 'confirmed' })
         .eq('id', appt.patient_unicare_appointment_id);
+      if (confirmWritebackErr) {
+        console.error('Patient DB confirm writeback failed (RLS/auth):', confirmWritebackErr);
+        setScanError(`Warning: Appointment confirmed locally, but patient notification failed: ${confirmWritebackErr.message}`);
+      }
 
       // 3. Resolve / create local patient record
       let patient = appt.patient_id
@@ -2402,14 +2484,29 @@ export default function App() {
       }
 
       // 4. Auto-create a queue entry (waiting) so confirmed appt appears in queue
+      //    Retrieve queue_id and link it back to the appointment so handleStartConsultation
+      //    can resolve the appointment context and load packet data.
       const token = await getNextToken();
-      await supabase.from('queue').insert({
-        doctor_id: doctorProfile.id,
-        patient_id: patient!.id,
-        status: 'waiting',
-        token_number: token,
-        chief_complaint: appt.notes || '',
-      });
+      const { data: confirmedQEntry, error: qInsertErr } = await supabase
+        .from('queue')
+        .insert({
+          doctor_id: doctorProfile.id,
+          patient_id: patient!.id,
+          status: 'waiting',
+          token_number: token,
+          chief_complaint: appt.notes || '',
+        })
+        .select()
+        .single();
+      if (qInsertErr) throw qInsertErr;
+
+      // 5. Store queue_id back into appointment so start-from-queue path can find it
+      if (confirmedQEntry?.id) {
+        await supabase
+          .from('appointments')
+          .update({ queue_id: confirmedQEntry.id, patient_id: patient!.id })
+          .eq('id', appt.id);
+      }
 
       fetchAppointments();
       fetchQueue();
@@ -2423,10 +2520,14 @@ export default function App() {
   const handleCancelAppointment = async (appt: Appointment) => {
     try {
       await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', appt.id);
-      await patientSupabase
+      const { error: cancelWritebackErr } = await patientSupabase
         .from('appointments')
         .update({ status: 'cancelled' })
         .eq('id', appt.patient_unicare_appointment_id);
+      if (cancelWritebackErr) {
+        console.error('Patient DB cancel writeback failed (RLS/auth):', cancelWritebackErr);
+        setScanError(`Warning: Appointment cancelled locally, but patient notification failed: ${cancelWritebackErr.message}`);
+      }
       fetchAppointments();
     } catch (err) {
       console.error('Error cancelling appointment:', err);
@@ -2541,11 +2642,15 @@ export default function App() {
         .update({ status: 'checked_in', queue_id: qEntry.id, patient_id: patient!.id })
         .eq('id', appt.id);
 
-      // Writeback to patient app
-      await patientSupabase
+      // Writeback to patient app — check error so RLS/auth failures are visible
+      const { error: checkInWritebackErr } = await patientSupabase
         .from('appointments')
         .update({ status: 'checked_in', queue_id: qEntry.id })
         .eq('id', appt.patient_unicare_appointment_id);
+      if (checkInWritebackErr) {
+        console.error('Patient DB check-in writeback failed (RLS/auth):', checkInWritebackErr);
+        setScanError(`Warning: Patient checked in locally, but patient status sync failed: ${checkInWritebackErr.message}`);
+      }
 
       const updatedAppt: Appointment = { ...appt, status: 'checked_in', queue_id: qEntry.id, patient_id: patient!.id };
       setActiveAppointment(updatedAppt);
@@ -2598,18 +2703,25 @@ export default function App() {
           .update({ status: 'completed' })
           .eq('id', activeAppointment.id);
 
-        // Writeback appointment status to patient app
-        await patientSupabase
+        // Writeback appointment status to patient app — check error so failures are visible
+        const { error: completeWritebackErr } = await patientSupabase
           .from('appointments')
           .update({ status: 'completed' })
           .eq('id', activeAppointment.patient_unicare_appointment_id);
+        if (completeWritebackErr) {
+          console.error('Patient DB completion writeback failed (RLS/auth):', completeWritebackErr);
+          setScanError(`Warning: Consultation saved, but patient status sync failed: ${completeWritebackErr.message}`);
+        }
 
         // Write full prescription to patient app so patient can view all details
-        await patientSupabase.from('prescriptions').insert({
+        const { error: prescWritebackErr } = await patientSupabase.from('prescriptions').insert({
           ...prescriptionPayload,
           appointment_id: activeAppointment.patient_unicare_appointment_id,
           profile_id: activeAppointment.profile_id,
         });
+        if (prescWritebackErr) {
+          console.error('Patient DB prescription writeback failed (RLS/auth):', prescWritebackErr);
+        }
       } else if (selectedPatient) {
         // Walk-in or QR scan consultation: try to find the patient's profile in UniCare
         // by matching phone number, and write prescription there too
@@ -2621,11 +2733,14 @@ export default function App() {
             .eq('phone', patientPhone)
             .maybeSingle();
           if (profile?.id) {
-            await patientSupabase.from('prescriptions').insert({
+            const { error: walkInPrescErr } = await patientSupabase.from('prescriptions').insert({
               ...prescriptionPayload,
               profile_id: profile.id,
               appointment_id: null,
             });
+            if (walkInPrescErr) {
+              console.error('Patient DB walk-in prescription writeback failed (RLS/auth):', walkInPrescErr);
+            }
           }
         }
       }
