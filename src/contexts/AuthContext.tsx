@@ -73,7 +73,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             .limit(1)
             .maybeSingle();
 
-          if (createError) throw createError;
+          if (createError) {
+            // If it failed because another concurrent request already inserted it,
+            // gracefully recover by fetching the now-existing profile.
+            if (createError.code === '23505') { 
+              const { data: retryExisting } = await supabase
+                .from('doctors')
+                .select('*')
+                .eq('auth_user_id', userId)
+                .order('created_at', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+                
+              if (retryExisting) {
+                setDoctorProfile(retryExisting);
+                return;
+              }
+            }
+            throw createError;
+          }
           if (created) setDoctorProfile(created);
         }
       }
