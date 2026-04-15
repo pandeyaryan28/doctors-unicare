@@ -48,12 +48,15 @@ import {
   QrCode,
   ScanLine,
   UserCheck,
+  Camera,
+  Keyboard,
 } from 'lucide-react';
 import { cn, calculateAge, formatDateTime } from './lib/utils';
 import { Patient, Consultation, QueueItem, PacketData, Medicine, Appointment, AppointmentStatus } from './types';
 import { useAuth } from './contexts/AuthContext';
 import type { DoctorProfile } from './contexts/AuthContext';
 import { supabase, patientSupabase } from './lib/supabase';
+import { classifyQRContent, resolvePatientCode } from './services/patientIdentityService';
 import LoginPage from './pages/LoginPage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -512,30 +515,124 @@ const StatCard = ({ label, value, icon: Icon, color }: { label: string; value: s
   );
 };
 
-// ─── QR Scanner Modal (Dual Mode) ────────────────────────────────────────────
+// ─── QR Scanner Modal (Camera + Keyboard, auto-classify) ────────────────────
 
-type ScanMode = 'packet' | 'registration';
+type ScanTab = 'camera' | 'keyboard';
+type ScanState = 'idle' | 'scanning' | 'resolved' | 'failed';
 
 interface QRScannerModalProps {
   onScanPacket: (url: string) => void;
-  onScanRegistration: (profileId: string) => void;
+  /** New: Accept UC-XXXXXXXX code (from camera or typed input) */
+  onScanPatientCode: (code: string) => void;
   onClose: () => void;
 }
 
-function QRScannerModal({ onScanPacket, onScanRegistration, onClose }: QRScannerModalProps) {
-  const [mode, setMode] = useState<ScanMode>('packet');
+function QRScannerModal({ onScanPacket, onScanPatientCode, onClose }: QRScannerModalProps) {
+  const [tab, setTab] = useState<ScanTab>('camera');
+  const [scanState, setScanState] = useState<ScanState>('idle');
   const [input, setInput] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const cameraContainerId = 'qr-camera-viewport';
+  const scannerRef = useRef<any>(null);
+  const processingRef = useRef(false); // debounce / lock
 
-  const handleSubmit = (e: React.FormEvent) => {
+  /** Dispatch classified QR content to the right handler */
+  const dispatchScan = useCallback((raw: string) => {
+    if (processingRef.current) return; // prevent double-fire
+    processingRef.current = true;
+    setLocalError(null);
+
+    const classified = classifyQRContent(raw);
+
+    if (classified.type === 'patient_qr' || classified.type === 'patient_code') {
+      setScanState('resolved');
+      onScanPatientCode(classified.code);
+      onClose();
+    } else if (classified.type === 'shared_packet') {
+      setScanState('resolved');
+      onScanPacket(classified.uuid);
+      onClose();
+    } else {
+      setScanState('failed');
+      setLocalError('Unrecognised QR code. Please scan a valid UniCare patient QR or enter a UC- code.');
+      processingRef.current = false; // allow retry
+    }
+  }, [onScanPacket, onScanPatientCode, onClose]);
+
+  // ── Camera scanner lifecycle ──────────────────────────────────────────────
+
+  useEffect(() => {
+    if (tab !== 'camera') {
+      // Stop and clear scanner when switching away
+      if (scannerRef.current) {
+        try { scannerRef.current.clear(); } catch { /* ignore */ }
+        scannerRef.current = null;
+      }
+      setScanState('idle');
+      processingRef.current = false;
+      return;
+    }
+
+    // Dynamically import html5-qrcode to avoid SSR issues
+    let cancelled = false;
+    (async () => {
+      try {
+        const { Html5QrcodeScanner, Html5QrcodeScanType } = await import('html5-qrcode');
+        if (cancelled) return;
+
+        setScanState('scanning');
+        const scanner = new Html5QrcodeScanner(
+          cameraContainerId,
+          {
+            fps: 10,
+            qrbox: { width: 240, height: 240 },
+            rememberLastUsedCamera: true,
+            supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+            showTorchButtonIfSupported: true,
+            showZoomSliderIfSupported: true,
+          },
+          /* verbose = */ false
+        );
+        scannerRef.current = scanner;
+
+        scanner.render(
+          (decoded: string) => {
+            if (!cancelled) dispatchScan(decoded);
+          },
+          (err: string) => {
+            // Per-frame errors are normal (no QR in frame) — ignore
+            if (!err.includes('No QR')) {
+              console.debug('[QRScanner] scan frame error:', err);
+            }
+          }
+        );
+      } catch (initErr: any) {
+        if (!cancelled) {
+          setScanState('failed');
+          setLocalError(
+            initErr?.message?.includes('NotAllowedError') || initErr?.message?.includes('Permission')
+              ? 'Camera permission denied. Please allow camera access and try again.'
+              : `Could not start camera: ${initErr?.message || initErr}`
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (scannerRef.current) {
+        try { scannerRef.current.clear(); } catch { /* ignore */ }
+        scannerRef.current = null;
+      }
+    };
+  }, [tab, dispatchScan]);
+
+  // ── Keyboard (type/paste) submit ──────────────────────────────────────────
+
+  const handleKeyboardSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
-    if (mode === 'packet') {
-      onScanPacket(input.trim());
-    } else {
-      onScanRegistration(input.trim());
-    }
-    setInput('');
-    onClose();
+    dispatchScan(input.trim());
   };
 
   return (
@@ -547,14 +644,14 @@ function QRScannerModal({ onScanPacket, onScanRegistration, onClose }: QRScanner
         className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md border border-gray-100 dark:border-slate-800 overflow-hidden"
       >
         {/* Header */}
-        <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="p-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-blue-50 dark:bg-blue-900/40 rounded-xl text-blue-600 dark:text-blue-400">
               <QrCode className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Scan Patient QR</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Paste the scanned QR content below</p>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Patient Intake</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Scan QR or type the UC- patient code</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
@@ -562,70 +659,100 @@ function QRScannerModal({ onScanPacket, onScanRegistration, onClose }: QRScanner
           </button>
         </div>
 
-        {/* Mode selector */}
-        <div className="p-6 space-y-5">
-          <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 dark:bg-slate-800 rounded-2xl">
-            <button
-              onClick={() => { setMode('packet'); setInput(''); }}
-              className={cn(
-                'flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold transition-all',
-                mode === 'packet'
-                  ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700',
-              )}
-            >
-              <ScanLine className="w-4 h-4" />
-              Health Packet
-              <span className={cn('text-[9px] font-medium', mode === 'packet' ? 'text-blue-500' : 'text-gray-400')}>Dynamic — time-limited</span>
-            </button>
-            <button
-              onClick={() => { setMode('registration'); setInput(''); }}
-              className={cn(
-                'flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-xs font-bold transition-all',
-                mode === 'registration'
-                  ? 'bg-white dark:bg-slate-700 text-green-700 dark:text-green-300 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700',
-              )}
-            >
-              <UserCheck className="w-4 h-4" />
-              Patient ID
-              <span className={cn('text-[9px] font-medium', mode === 'registration' ? 'text-green-500' : 'text-gray-400')}>Permanent — for registration</span>
-            </button>
-          </div>
+        {/* Tab switcher */}
+        <div className="flex gap-0 border-b border-gray-100 dark:border-slate-800">
+          <button
+            onClick={() => { setTab('camera'); setLocalError(null); processingRef.current = false; }}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-all border-b-2',
+              tab === 'camera'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300',
+            )}
+          >
+            <Camera className="w-4 h-4" />
+            Camera
+          </button>
+          <button
+            onClick={() => { setTab('keyboard'); setLocalError(null); processingRef.current = false; }}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition-all border-b-2',
+              tab === 'keyboard'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300',
+            )}
+          >
+            <Keyboard className="w-4 h-4" />
+            Type / Paste
+          </button>
+        </div>
 
-          {/* Context info */}
-          <div className={cn(
-            'p-3 rounded-xl text-xs leading-relaxed',
-            mode === 'packet'
-              ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-              : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300',
-          )}>
-            {mode === 'packet'
-              ? 'Scan the dynamic health packet QR from the patient\'s UniCare app. Loads full medical history, records and vitals for this consultation.'
-              : 'Scan the patient\'s permanent UniCare ID QR. Registers or retrieves the patient record and adds them to today\'s queue.'}
-          </div>
-
-          {/* Input */}
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={mode === 'packet' ? 'Paste health packet URL...' : 'Paste patient profile ID (UUID)...'}
-              className="w-full px-4 py-3.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              autoFocus
-            />
-            <button
-              type="submit"
-              disabled={!input.trim()}
-              className={cn(
-                'w-full py-3.5 rounded-2xl font-bold text-white text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50',
-                mode === 'packet' ? 'bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 dark:shadow-none' : 'bg-green-600 hover:bg-green-700 shadow-lg shadow-green-100 dark:shadow-none',
+        <div className="p-5 space-y-4">
+          {/* ── Camera tab ── */}
+          {tab === 'camera' && (
+            <>
+              {/* html5-qrcode mounts its UI inside this div */}
+              <div
+                id={cameraContainerId}
+                className="w-full rounded-2xl overflow-hidden bg-black min-h-[260px] flex items-center justify-center"
+              />
+              {scanState === 'idle' && (
+                <div className="flex items-center justify-center gap-2 text-xs text-gray-400 font-medium">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Initialising camera…
+                </div>
               )}
+              {scanState === 'scanning' && (
+                <p className="text-center text-xs text-gray-500 dark:text-gray-400">
+                  Point camera at a <span className="font-bold text-blue-600 dark:text-blue-400">UniCare patient QR code</span>
+                </p>
+              )}
+            </>
+          )}
+
+          {/* ── Keyboard tab ── */}
+          {tab === 'keyboard' && (
+            <form onSubmit={handleKeyboardSubmit} className="space-y-3">
+              <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                Enter a <span className="font-bold">UC-XXXXXXXX</span> patient code, a health packet UUID, or paste QR content directly.
+              </div>
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => { setInput(e.target.value); setLocalError(null); processingRef.current = false; }}
+                placeholder="e.g. UC-A8KM3NQZ or packet UUID"
+                className="w-full px-4 py-3.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-mono"
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                className="w-full py-3.5 rounded-2xl font-bold text-white text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 dark:shadow-none"
+              >
+                <UserCheck className="w-4 h-4" />
+                Identify Patient
+              </button>
+            </form>
+          )}
+
+          {/* ── Error banner ── */}
+          {localError && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-xl"
             >
-              {mode === 'packet' ? <><ScanLine className="w-4 h-4" />Load Health Packet</> : <><UserCheck className="w-4 h-4" />Register Patient</>}
-            </button>
-          </form>
+              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700 dark:text-red-300 leading-relaxed">{localError}</p>
+            </motion.div>
+          )}
+
+          {/* ── Info chip ── */}
+          <p className="text-center text-[10px] text-gray-400 dark:text-gray-500">
+            Supports permanent patient codes <span className="font-mono font-bold">UC-XXXXXXXX</span> and time-limited health packets
+          </p>
         </div>
       </motion.div>
     </div>
@@ -839,11 +966,11 @@ const CompletedCard: React.FC<{ item: QueueItem }> = ({ item }) => {
 
 // ─── Page: Dashboard ─────────────────────────────────────────────────────────
 
-function DashboardPage({ patients, queue, onQRScan, onRegisterPatient, onStartConsultation }: {
+function DashboardPage({ patients, queue, onQRScan, onScanPatientCode, onStartConsultation }: {
   patients: Patient[];
   queue: QueueItem[];
   onQRScan: (url: string) => void;
-  onRegisterPatient: (profileId: string) => void;
+  onScanPatientCode: (code: string) => void;
   onStartConsultation: (item: QueueItem) => void;
 }) {
   const navigate = useNavigate();
@@ -950,7 +1077,7 @@ function DashboardPage({ patients, queue, onQRScan, onRegisterPatient, onStartCo
         {showScanner && (
           <QRScannerModal
             onScanPacket={(url) => { onQRScan(url); setShowScanner(false); }}
-            onScanRegistration={(id) => { onRegisterPatient(id); setShowScanner(false); }}
+            onScanPatientCode={(code) => { onScanPatientCode(code); setShowScanner(false); }}
             onClose={() => setShowScanner(false)}
           />
         )}
@@ -1183,7 +1310,7 @@ function PatientsPage({ patients, onSelectPatient }: { patients: Patient[]; onSe
 // ─── Page: Queue (Unified — Walk-ins + Confirmed Appointments) ───────────────
 
 function QueuePage({
-  queue, patients, onStartConsultation, onRemoveFromQueue, onAddToQueue, onQRScan, onRegisterPatient,
+  queue, patients, onStartConsultation, onRemoveFromQueue, onAddToQueue, onQRScan, onScanPatientCode,
 }: {
   queue: QueueItem[];
   patients: Patient[];
@@ -1191,7 +1318,7 @@ function QueuePage({
   onRemoveFromQueue: (id: string) => void;
   onAddToQueue: (patientId: string, complaint: string, newPatient?: Omit<Patient, 'id'>) => Promise<void>;
   onQRScan: (url: string) => void;
-  onRegisterPatient: (profileId: string) => void;
+  onScanPatientCode: (code: string) => void;
 }) {
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
@@ -1321,7 +1448,7 @@ function QueuePage({
         {showScanner && (
           <QRScannerModal
             onScanPacket={(url) => { onQRScan(url); setShowScanner(false); }}
-            onScanRegistration={(id) => { onRegisterPatient(id); setShowScanner(false); }}
+            onScanPatientCode={(code) => { onScanPatientCode(code); setShowScanner(false); }}
             onClose={() => setShowScanner(false)}
           />
         )}
@@ -2273,55 +2400,92 @@ export default function App() {
     }
   };
 
-  // ── Register Patient via Permanent QR ─────────────────────────────────────
-  // Accepts a UniCare profile_id UUID, fetches their details, creates/finds
-  // a local patient record, then adds them to today's walk-in queue.
+  // ── Register Patient via UniCare Patient Code (UC-XXXXXXXX) ─────────────
+  // Resolves the canonical patient code to a full profile from the patient DB,
+  // upserts to the local patients table (enriching data if record exists),
+  // then adds to today's queue (idempotent — skips if already waiting today).
 
-  const handleRegisterPatient = async (profileId: string) => {
+  const handleRegisterByPatientCode = async (code: string) => {
     if (!doctorProfile) return;
     setScanLoading(true); setScanError(null);
     try {
-      if (!profileId || profileId.length < 10) throw new Error('Invalid patient ID format');
+      // 1. Resolve full profile from patient DB (throws if inactive / not found)
+      const profile = await resolvePatientCode(code);
 
-      const { data: profile, error: profileError } = await patientSupabase
-        .from('profiles').select('*').eq('id', profileId).single();
-      if (profileError || !profile) throw new Error('Patient profile not found in UniCare');
+      // 2. Look up existing patient in this doctor's DB:
+      //    Priority: patient_code match > source_profile_id match > phone match
+      let patient =
+        patients.find(p => (p as any).patient_code === profile.patient_code) ??
+        patients.find(p => (p as any).source_profile_id === profile.id) ??
+        (profile.phone ? patients.find(p => p.phone === profile.phone) : undefined);
 
-      // Find by phone first (most reliable), then by name
-      let patient = patients.find(p =>
-        (profile.phone && p.phone === profile.phone) || p.name === profile.name
-      );
+      const enrichedData = {
+        name: profile.name,
+        age: profile.age,
+        gender: profile.gender || 'Not specified',
+        phone: profile.phone || null,
+        email: profile.email || null,
+        abha_id: profile.abha_id || null,
+        address: profile.address || null,
+        blood_group: profile.blood_group || null,
+        dob: profile.dob || null,
+        source_profile_id: profile.id,
+        patient_code: profile.patient_code,
+      };
 
       if (!patient) {
-        const { data: newP, error: pErr } = await supabase.from('patients').insert({
-          doctor_id: doctorProfile.id,
-          name: profile.name,
-          age: profile.dob ? calculateAge(profile.dob) : 0,
-          gender: profile.gender || 'Not specified',
-          phone: profile.phone || null,
-          email: profile.email || null,
-          abha_id: profile.abha_id || null,
-          address: profile.address || null,
-          blood_group: profile.blood_group || null,
-        }).select().single();
-        if (pErr) throw pErr;
+        // 3a. Create new patient record
+        const { data: newP, error: pErr } = await supabase
+          .from('patients')
+          .insert({ doctor_id: doctorProfile.id, ...enrichedData })
+          .select()
+          .single();
+        if (pErr) throw new Error(`Failed to create patient record: ${pErr.message}`);
         patient = newP as Patient;
         fetchPatients();
+      } else {
+        // 3b. Enrich existing patient record with latest profile data
+        await supabase
+          .from('patients')
+          .update(enrichedData)
+          .eq('id', patient.id);
+        // Optimistically update local reference
+        patient = { ...patient, ...enrichedData } as Patient;
       }
 
+      // 4. Idempotency check — skip if already in today's queue (waiting)
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const { data: existingQueue } = await supabase
+        .from('queue')
+        .select('id, status')
+        .eq('doctor_id', doctorProfile.id)
+        .eq('patient_id', patient!.id)
+        .gte('created_at', today.toISOString())
+        .in('status', ['waiting', 'in-consultation'])
+        .maybeSingle();
+
+      if (existingQueue) {
+        // Patient is already in queue — just navigate
+        fetchQueue();
+        navigate('/queue');
+        return;
+      }
+
+      // 5. Add to queue
       const token = await getNextToken();
-      await supabase.from('queue').insert({
+      const { error: qErr } = await supabase.from('queue').insert({
         doctor_id: doctorProfile.id,
         patient_id: patient!.id,
         status: 'waiting',
         token_number: token,
         chief_complaint: '',
       });
+      if (qErr) throw new Error(`Failed to add to queue: ${qErr.message}`);
 
       fetchQueue();
       navigate('/queue');
     } catch (err: any) {
-      setScanError(err.message || 'Could not register patient');
+      setScanError(err.message || 'Could not register patient. Please try again.');
     } finally {
       setScanLoading(false);
     }
@@ -2819,7 +2983,7 @@ export default function App() {
         <AnimatePresence mode="wait">
           <Routes>
             <Route path="/" element={
-              <DashboardPage patients={patients} queue={queue} onQRScan={handleQRScan} onRegisterPatient={handleRegisterPatient} onStartConsultation={handleStartConsultation} />
+              <DashboardPage patients={patients} queue={queue} onQRScan={handleQRScan} onScanPatientCode={handleRegisterByPatientCode} onStartConsultation={handleStartConsultation} />
             } />
             <Route path="/patients" element={<PatientsPage patients={patients} onSelectPatient={setSelectedPatient} />} />
             <Route path="/appointments" element={
@@ -2838,7 +3002,7 @@ export default function App() {
                 onRemoveFromQueue={handleRemoveFromQueue}
                 onAddToQueue={handleAddToQueue}
                 onQRScan={handleQRScan}
-                onRegisterPatient={handleRegisterPatient}
+                onScanPatientCode={handleRegisterByPatientCode}
               />
             } />
             <Route path="/consultations" element={<ConsultationsPage />} />
