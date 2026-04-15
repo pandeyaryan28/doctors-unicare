@@ -80,34 +80,63 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    // IMPORTANT: onAuthStateChange is the single source of truth for loading=false.
-    // It fires for ALL cases (initial load, OAuth redirect, token refresh, sign-out)
-    // so we rely on it exclusively to prevent the flash-of-login-screen race.
-    let authStateReceived = false;
+    let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      authStateReceived = true;
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchDoctorProfile(session.user.id);
-      } else {
-        setDoctorProfile(null);
-      }
-      // Clear the loading spinner now that we know the auth state
-      setLoading(false);
-    });
-
-    // Fallback: if onAuthStateChange never fires (e.g. network error before token exchange)
-    // release the loading state after 5 seconds so the user isn't stuck.
+    // Unconditional fallback: if everything hangs, release the loading UI after 3s
     const fallbackTimer = setTimeout(() => {
-      if (!authStateReceived) {
-        console.warn('Auth: onAuthStateChange did not fire within 5 s — releasing loading state');
+      if (mounted) {
+        console.warn('Auth initialization fallback timeout — Releasing loading state.');
         setLoading(false);
       }
-    }, 5000);
+    }, 3000);
+
+    const initAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        
+        if (mounted) {
+          setSession(session);
+          setUser(session?.user ?? null);
+          if (session?.user) {
+            await fetchDoctorProfile(session.user.id);
+          } else {
+            setDoctorProfile(null);
+          }
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error during initial auth check:', err);
+        if (mounted) {
+          setDoctorProfile(null);
+          setLoading(false);
+        }
+      }
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      try {
+        if (session?.user) {
+          await fetchDoctorProfile(session.user.id);
+        } else {
+          setDoctorProfile(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
       clearTimeout(fallbackTimer);
     };

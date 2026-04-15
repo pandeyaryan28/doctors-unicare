@@ -1,18 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder';
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (supabaseUrl === 'https://placeholder.supabase.co' || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
   console.error('CRITICAL: Missing Primary Supabase environment variables. Check your .env file or production environment settings.');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-const patientSupabaseUrl = import.meta.env.VITE_PATIENT_SUPABASE_URL || '';
-const patientSupabaseAnonKey = import.meta.env.VITE_PATIENT_SUPABASE_ANON_KEY || '';
+const patientSupabaseUrl = import.meta.env.VITE_PATIENT_SUPABASE_URL || 'https://placeholder.supabase.co';
+const patientSupabaseAnonKey = import.meta.env.VITE_PATIENT_SUPABASE_ANON_KEY || 'placeholder';
 
-if (!patientSupabaseUrl || !patientSupabaseAnonKey) {
+if (patientSupabaseUrl === 'https://placeholder.supabase.co' || !import.meta.env.VITE_PATIENT_SUPABASE_ANON_KEY) {
   console.warn('WARNING: Missing Patient Supabase environment variables. Patient health packet importing will not work.');
 }
 
