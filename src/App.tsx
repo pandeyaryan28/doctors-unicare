@@ -2189,6 +2189,9 @@ export default function App() {
   const [newMedicine, setNewMedicine] = useState<Medicine>({ name: '', timing: [], food: 'after', days: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // ── Sync lock: prevents concurrent syncs from the realtime chain ────────
+  const syncingRef = useRef(false);
+
   const fetchQueue = useCallback(async () => {
     if (!doctorProfile) return;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -2232,6 +2235,9 @@ export default function App() {
 
   const syncPatientAppointmentsToLocal = useCallback(async () => {
     if (!doctorProfile) return;
+    // Prevent concurrent syncs from stacking (realtime can fire this rapidly)
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     try {
       const { data: extAppts, error } = await patientSupabase
         .from('appointments')
@@ -2257,11 +2263,18 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to sync patient appointments:', err);
+    } finally {
+      syncingRef.current = false;
     }
   }, [doctorProfile]);
 
+  // Use doctorProfile.id (a stable primitive) as the sole dependency so this
+  // effect does NOT re-run every time a callback reference is recreated.
+  const doctorId = doctorProfile?.id;
+
   useEffect(() => {
-    if (!doctorProfile) return;
+    if (!doctorId) return;
+
     fetchQueue();
     fetchPatients();
     
@@ -2271,24 +2284,25 @@ export default function App() {
 
     // Queue realtime — scoped to this doctor
     const queueChannel = supabase
-      .channel('queue-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue', filter: `doctor_id=eq.${doctorProfile.id}` }, () => {
+      .channel(`queue-realtime-${doctorId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue', filter: `doctor_id=eq.${doctorId}` }, () => {
         fetchQueue();
       })
       .subscribe();
 
     // Appointments realtime — scoped to this doctor
     const apptChannel = supabase
-      .channel('appointments-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${doctorProfile.id}` }, () => {
+      .channel(`appointments-realtime-${doctorId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${doctorId}` }, () => {
         fetchAppointments();
       })
       .subscribe();
 
     // Patient Appointments Realtime — listen for inserts/updates from Patient DB
+    // Uses syncingRef lock so rapid-fire realtime events collapse into one sync.
     const patientApptChannel = patientSupabase
       .channel('patient-appointments-realtime-doctor-view')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${doctorProfile.id}` }, async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${doctorId}` }, async () => {
         // Just re-run the full sync to properly join profile name
         await syncPatientAppointmentsToLocal();
         fetchAppointments();
@@ -2300,7 +2314,8 @@ export default function App() {
       supabase.removeChannel(apptChannel);
       patientSupabase.removeChannel(patientApptChannel);
     };
-  }, [doctorProfile, fetchQueue, fetchPatients, fetchAppointments, syncPatientAppointmentsToLocal]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorId]);
 
   // ── Token number helper ────────────────────────────────────────────────────
 

@@ -80,30 +80,37 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchDoctorProfile(session.user.id);
-      }
-    }).catch(err => {
-      console.error('Session fetch error:', err);
-    }).finally(() => {
-      setLoading(false);
-    });
+    // IMPORTANT: onAuthStateChange is the single source of truth for loading=false.
+    // It fires for ALL cases (initial load, OAuth redirect, token refresh, sign-out)
+    // so we rely on it exclusively to prevent the flash-of-login-screen race.
+    let authStateReceived = false;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      authStateReceived = true;
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchDoctorProfile(session.user.id);
+        await fetchDoctorProfile(session.user.id);
       } else {
         setDoctorProfile(null);
       }
+      // Clear the loading spinner now that we know the auth state
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // Fallback: if onAuthStateChange never fires (e.g. network error before token exchange)
+    // release the loading state after 5 seconds so the user isn't stuck.
+    const fallbackTimer = setTimeout(() => {
+      if (!authStateReceived) {
+        console.warn('Auth: onAuthStateChange did not fire within 5 s — releasing loading state');
+        setLoading(false);
+      }
+    }, 5000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(fallbackTimer);
+    };
   }, []);
 
   const signInWithGoogle = async () => {
