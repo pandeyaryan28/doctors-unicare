@@ -158,13 +158,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.warn('Sign out error:', err);
-    } finally {
+      // 1. Immediately clear local UI state for snappy response
       setUser(null);
       setSession(null);
       setDoctorProfile(null);
+
+      // 2. Attempt to clear Supabase session (use local scope to bypass network errors)
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Sign out error:', err);
+      // Fallback: forcefully clear storage and reload
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.reload();
     }
   };
 
