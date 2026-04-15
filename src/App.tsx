@@ -2334,6 +2334,7 @@ export default function App() {
   // ── QR Scan ────────────────────────────────────────────────────────────────
 
   const handleQRScan = async (url: string) => {
+    if (!doctorProfile) return;
     setScanLoading(true); setScanError(null);
     try {
       const packetId = url.split('/').pop();
@@ -2444,8 +2445,6 @@ export default function App() {
         address: profile.address || null,
         blood_group: profile.blood_group || null,
         dob: profile.dob || null,
-        source_profile_id: profile.id,
-        patient_code: profile.patient_code,
       };
 
       if (!patient) {
