@@ -44,11 +44,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const fetchDoctorProfile = async (userId: string) => {
     try {
-      const { data: existing } = await supabase
+      const { data: existing, error: selectError } = await supabase
         .from('doctors')
         .select('*')
         .eq('auth_user_id', userId)
-        .single();
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (selectError) {
+        console.warn('Warning fetching profile:', selectError);
+      }
 
       if (existing) {
         setDoctorProfile(existing);
@@ -64,7 +70,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               avatar_url: newUser.user.user_metadata.avatar_url || null,
             })
             .select()
-            .single();
+            .limit(1)
+            .maybeSingle();
 
           if (createError) throw createError;
           if (created) setDoctorProfile(created);
