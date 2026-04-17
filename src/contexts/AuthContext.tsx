@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
@@ -42,27 +42,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const isConfigured = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 
+  // Prevents concurrent fetchDoctorProfile calls — initAuth + onAuthStateChange
+  // INITIAL_SESSION both fire on mount; only one should run.
+  const fetchingRef = useRef(false);
+
   const fetchDoctorProfile = async (userId: string) => {
+    // Lock: skip if a fetch is already in flight for this mount cycle.
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+
     try {
-      // ── Defensive multi-row check (data-integrity guard) ──────────────────
-      // The DB enforces UNIQUE on auth_user_id, but guard defensively in case
-      // the constraint was ever missing or rows were inserted via a migration.
-      const { data: allRows, error: countError } = await supabase
-        .from('doctors')
-        .select('id, created_at, updated_at')
-        .eq('auth_user_id', userId);
-
-      if (!countError && allRows && allRows.length > 1) {
-        console.warn(
-          `[AuthContext] WARNING: ${allRows.length} doctor rows found for auth_user_id=${userId}. ` +
-          'This violates the expected uniqueness constraint. ' +
-          'Selecting the most recently updated row. Run the dedup migration to fix this.'
-        );
-      }
-
       // Always prefer the most recently updated/created row so that edits made
-      // on the current session are reflected on refresh, and stale/demo rows
-      // created before the UNIQUE constraint was enforced cannot override.
+      // on the current session are reflected on refresh.
+      // The DB enforces UNIQUE on auth_user_id (doctors_auth_user_id_key index),
+      // so there should only ever be one row per user.
       const { data: existing, error: selectError } = await supabase
         .from('doctors')
         .select('*')
@@ -73,12 +66,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .maybeSingle();
 
       if (selectError) {
-        console.warn('Warning fetching profile:', selectError);
+        console.warn('[AuthContext] Warning fetching profile:', selectError);
       }
 
       if (existing) {
         setDoctorProfile(existing);
       } else {
+        // No row yet — create one from Google auth metadata
         const { data: newUser } = await supabase.auth.getUser();
         if (newUser?.user) {
           const { data: created, error: createError } = await supabase
@@ -94,9 +88,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             .maybeSingle();
 
           if (createError) {
-            // If it failed because another concurrent request already inserted it,
-            // gracefully recover by fetching the now-existing profile.
-            // Use descending order here too for consistency.
+            // 23505 = unique_violation: another concurrent request beat us to the insert.
+            // Gracefully recover by fetching the now-existing row.
             if (createError.code === '23505') {
               const { data: retryExisting } = await supabase
                 .from('doctors')
@@ -118,30 +111,37 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
       }
     } catch (err) {
-      console.error('Error in fetchDoctorProfile:', err);
+      console.error('[AuthContext] Error in fetchDoctorProfile:', err);
+    } finally {
+      fetchingRef.current = false;
     }
   };
 
   const refreshProfile = async () => {
+    // refreshProfile is always an explicit user action — bypass the lock.
+    fetchingRef.current = false;
     if (user) await fetchDoctorProfile(user.id);
   };
 
   useEffect(() => {
     let mounted = true;
 
-    // Unconditional fallback: if everything hangs, release the loading UI after 3s
+    // Safety fallback: if auth init somehow hangs past 8s, unblock the UI.
+    // Normal cold-start with a live DB should complete in < 2s.
     const fallbackTimer = setTimeout(() => {
       if (mounted) {
-        console.warn('Auth initialization fallback timeout — Releasing loading state.');
+        console.warn('[AuthContext] Auth initialization fallback timeout — releasing loading state.');
         setLoading(false);
       }
-    }, 3000);
+    }, 8000);
 
+    // ── Primary init: read the stored session from localStorage (synchronous
+    // in practice) and fetch the doctor profile once. ──────────────────────
     const initAuth = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) throw error;
-        
+
         if (mounted) {
           setSession(session);
           setUser(session?.user ?? null);
@@ -151,24 +151,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setDoctorProfile(null);
           }
           setLoading(false);
+          clearTimeout(fallbackTimer);
         }
       } catch (err) {
-        console.error('Error during initial auth check:', err);
+        console.error('[AuthContext] Error during initial auth check:', err);
         if (mounted) {
           setDoctorProfile(null);
           setLoading(false);
+          clearTimeout(fallbackTimer);
         }
       }
     };
 
     initAuth();
 
+    // ── Auth state listener: handles sign-in, sign-out, and token refreshes
+    // after the initial mount. INITIAL_SESSION is skipped because initAuth
+    // already owns that moment — running both would fire duplicate DB fetches
+    // that race each other and can together exceed the fallback timer. ───────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
-      
+
+      // Skip INITIAL_SESSION — initAuth already handled it.
+      if (event === 'INITIAL_SESSION') return;
+
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       try {
         if (session?.user) {
           await fetchDoctorProfile(session.user.id);
@@ -178,6 +187,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } finally {
         if (mounted) {
           setLoading(false);
+          clearTimeout(fallbackTimer);
         }
       }
     });
@@ -187,7 +197,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       subscription.unsubscribe();
       clearTimeout(fallbackTimer);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const signInWithGoogle = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
@@ -205,16 +215,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
-      // 1. Immediately clear local UI state for snappy response
+      // 1. Immediately clear local UI state for a snappy response
       setUser(null);
       setSession(null);
       setDoctorProfile(null);
 
-      // 2. Attempt to clear Supabase session (use local scope to bypass network errors)
+      // 2. Attempt to clear the Supabase session (local scope avoids network errors)
       const { error } = await supabase.auth.signOut({ scope: 'local' });
       if (error) throw error;
     } catch (err) {
-      console.warn('Sign out error:', err);
+      console.warn('[AuthContext] Sign out error:', err);
       // Fallback: forcefully clear storage and reload
       localStorage.clear();
       sessionStorage.clear();
