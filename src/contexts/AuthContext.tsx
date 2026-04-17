@@ -42,20 +42,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const isConfigured = Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 
-  // Prevents concurrent fetchDoctorProfile calls — initAuth + onAuthStateChange
-  // INITIAL_SESSION both fire on mount; only one should run.
+  // Prevent concurrent profile fetches (e.g. INITIAL_SESSION + TOKEN_REFRESHED
+  // firing close together in the same mount).
   const fetchingRef = useRef(false);
 
   const fetchDoctorProfile = async (userId: string) => {
-    // Lock: skip if a fetch is already in flight for this mount cycle.
     if (fetchingRef.current) return;
     fetchingRef.current = true;
 
     try {
-      // Always prefer the most recently updated/created row so that edits made
-      // on the current session are reflected on refresh.
-      // The DB enforces UNIQUE on auth_user_id (doctors_auth_user_id_key index),
-      // so there should only ever be one row per user.
+      // Prefer the most recently updated row — the DB already enforces
+      // UNIQUE on auth_user_id (doctors_auth_user_id_key index), so this
+      // ordering is a safety net for any legacy duplicates only.
       const { data: existing, error: selectError } = await supabase
         .from('doctors')
         .select('*')
@@ -71,45 +69,43 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       if (existing) {
         setDoctorProfile(existing);
-      } else {
-        // No row yet — create one from Google auth metadata
-        const { data: newUser } = await supabase.auth.getUser();
-        if (newUser?.user) {
-          const { data: created, error: createError } = await supabase
+        return;
+      }
+
+      // No row yet — create one from Google OAuth metadata.
+      const { data: newUser } = await supabase.auth.getUser();
+      if (!newUser?.user) return;
+
+      const { data: created, error: createError } = await supabase
+        .from('doctors')
+        .insert({
+          auth_user_id: userId,
+          full_name: newUser.user.user_metadata.full_name || 'Doctor',
+          email: newUser.user.email || '',
+          avatar_url: newUser.user.user_metadata.avatar_url || null,
+        })
+        .select()
+        .limit(1)
+        .maybeSingle();
+
+      if (createError) {
+        // 23505 = unique_violation: a parallel request already created the row.
+        if (createError.code === '23505') {
+          const { data: retryExisting } = await supabase
             .from('doctors')
-            .insert({
-              auth_user_id: userId,
-              full_name: newUser.user.user_metadata.full_name || 'Doctor',
-              email: newUser.user.email || '',
-              avatar_url: newUser.user.user_metadata.avatar_url || null,
-            })
-            .select()
+            .select('*')
+            .eq('auth_user_id', userId)
+            .order('updated_at', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
-
-          if (createError) {
-            // 23505 = unique_violation: another concurrent request beat us to the insert.
-            // Gracefully recover by fetching the now-existing row.
-            if (createError.code === '23505') {
-              const { data: retryExisting } = await supabase
-                .from('doctors')
-                .select('*')
-                .eq('auth_user_id', userId)
-                .order('updated_at', { ascending: false })
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-              if (retryExisting) {
-                setDoctorProfile(retryExisting);
-                return;
-              }
-            }
-            throw createError;
-          }
-          if (created) setDoctorProfile(created);
+          if (retryExisting) setDoctorProfile(retryExisting);
+          return;
         }
+        throw createError;
       }
+
+      if (created) setDoctorProfile(created);
     } catch (err) {
       console.error('[AuthContext] Error in fetchDoctorProfile:', err);
     } finally {
@@ -118,77 +114,80 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const refreshProfile = async () => {
-    // refreshProfile is always an explicit user action — bypass the lock.
-    fetchingRef.current = false;
+    fetchingRef.current = false; // bypass the lock for explicit refresh
     if (user) await fetchDoctorProfile(user.id);
   };
 
   useEffect(() => {
     let mounted = true;
+    let loadingReleased = false;
 
-    // Safety fallback: if auth init somehow hangs past 8s, unblock the UI.
-    // Normal cold-start with a live DB should complete in < 2s.
-    const fallbackTimer = setTimeout(() => {
-      if (mounted) {
-        console.warn('[AuthContext] Auth initialization fallback timeout — releasing loading state.');
+    const releaseLoading = () => {
+      if (!loadingReleased && mounted) {
+        loadingReleased = true;
         setLoading(false);
-      }
-    }, 8000);
-
-    // ── Primary init: read the stored session from localStorage (synchronous
-    // in practice) and fetch the doctor profile once. ──────────────────────
-    const initAuth = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-
-        if (mounted) {
-          setSession(session);
-          setUser(session?.user ?? null);
-          if (session?.user) {
-            await fetchDoctorProfile(session.user.id);
-          } else {
-            setDoctorProfile(null);
-          }
-          setLoading(false);
-          clearTimeout(fallbackTimer);
-        }
-      } catch (err) {
-        console.error('[AuthContext] Error during initial auth check:', err);
-        if (mounted) {
-          setDoctorProfile(null);
-          setLoading(false);
-          clearTimeout(fallbackTimer);
-        }
       }
     };
 
-    initAuth();
+    // Emergency escape hatch — should never fire in practice now that we
+    // don't block on network calls during initialization.
+    const fallbackTimer = setTimeout(() => {
+      console.warn('[AuthContext] Auth initialization fallback timeout — releasing loading state.');
+      releaseLoading();
+    }, 10000);
 
-    // ── Auth state listener: handles sign-in, sign-out, and token refreshes
-    // after the initial mount. INITIAL_SESSION is skipped because initAuth
-    // already owns that moment — running both would fire duplicate DB fetches
-    // that race each other and can together exceed the fallback timer. ───────
+    // ─────────────────────────────────────────────────────────────────────────
+    // IMPORTANT: Do NOT call supabase.auth.getSession() here.
+    //
+    // In Supabase JS v2, getSession() triggers a token-refresh network call
+    // when the access token is expired. That network call can hang for 10s+
+    // and blocks setLoading(false), causing the fallback timer to fire.
+    //
+    // onAuthStateChange fires INITIAL_SESSION **synchronously from localStorage**
+    // without any network calls. This is the correct v2 initialization pattern.
+    // ─────────────────────────────────────────────────────────────────────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
-      // Skip INITIAL_SESSION — initAuth already handled it.
-      if (event === 'INITIAL_SESSION') return;
+      // TOKEN_REFRESHED: access token was silently renewed. Only update the
+      // stored session object — no profile re-fetch needed, and don't touch
+      // the loading state (it was already released on INITIAL_SESSION).
+      if (event === 'TOKEN_REFRESHED') {
+        setSession(session);
+        return;
+      }
 
+      // Update auth state for all other events.
       setSession(session);
       setUser(session?.user ?? null);
 
+      if (!session?.user) {
+        // Not signed in (INITIAL_SESSION with no session, or SIGNED_OUT).
+        setDoctorProfile(null);
+        releaseLoading();
+        clearTimeout(fallbackTimer);
+        return;
+      }
+
+      // ── INITIAL_SESSION (page load / refresh) ───────────────────────────
+      // Release loading NOW — we know the user is logged in from localStorage.
+      // The profile fetch runs in the background; components handle null
+      // doctorProfile gracefully (null checks / fallback text) for the brief
+      // moment before the profile arrives (~300–600 ms).
+      if (event === 'INITIAL_SESSION') {
+        releaseLoading();
+        clearTimeout(fallbackTimer);
+        fetchDoctorProfile(session.user.id); // intentionally not awaited
+        return;
+      }
+
+      // ── SIGNED_IN (explicit login) ──────────────────────────────────────
+      // Await the profile so the dashboard has data the instant it renders.
       try {
-        if (session?.user) {
-          await fetchDoctorProfile(session.user.id);
-        } else {
-          setDoctorProfile(null);
-        }
+        await fetchDoctorProfile(session.user.id);
       } finally {
-        if (mounted) {
-          setLoading(false);
-          clearTimeout(fallbackTimer);
-        }
+        releaseLoading();
+        clearTimeout(fallbackTimer);
       }
     });
 
@@ -215,17 +214,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signOut = async () => {
     try {
-      // 1. Immediately clear local UI state for a snappy response
       setUser(null);
       setSession(null);
       setDoctorProfile(null);
-
-      // 2. Attempt to clear the Supabase session (local scope avoids network errors)
       const { error } = await supabase.auth.signOut({ scope: 'local' });
       if (error) throw error;
     } catch (err) {
       console.warn('[AuthContext] Sign out error:', err);
-      // Fallback: forcefully clear storage and reload
       localStorage.clear();
       sessionStorage.clear();
       window.location.reload();
