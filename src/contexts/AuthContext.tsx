@@ -44,11 +44,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const fetchDoctorProfile = async (userId: string) => {
     try {
+      // ── Defensive multi-row check (data-integrity guard) ──────────────────
+      // The DB enforces UNIQUE on auth_user_id, but guard defensively in case
+      // the constraint was ever missing or rows were inserted via a migration.
+      const { data: allRows, error: countError } = await supabase
+        .from('doctors')
+        .select('id, created_at, updated_at')
+        .eq('auth_user_id', userId);
+
+      if (!countError && allRows && allRows.length > 1) {
+        console.warn(
+          `[AuthContext] WARNING: ${allRows.length} doctor rows found for auth_user_id=${userId}. ` +
+          'This violates the expected uniqueness constraint. ' +
+          'Selecting the most recently updated row. Run the dedup migration to fix this.'
+        );
+      }
+
+      // Always prefer the most recently updated/created row so that edits made
+      // on the current session are reflected on refresh, and stale/demo rows
+      // created before the UNIQUE constraint was enforced cannot override.
       const { data: existing, error: selectError } = await supabase
         .from('doctors')
         .select('*')
         .eq('auth_user_id', userId)
-        .order('created_at', { ascending: true })
+        .order('updated_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
@@ -76,15 +96,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (createError) {
             // If it failed because another concurrent request already inserted it,
             // gracefully recover by fetching the now-existing profile.
-            if (createError.code === '23505') { 
+            // Use descending order here too for consistency.
+            if (createError.code === '23505') {
               const { data: retryExisting } = await supabase
                 .from('doctors')
                 .select('*')
                 .eq('auth_user_id', userId)
-                .order('created_at', { ascending: true })
+                .order('updated_at', { ascending: false })
+                .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
-                
+
               if (retryExisting) {
                 setDoctorProfile(retryExisting);
                 return;
