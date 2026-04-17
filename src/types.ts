@@ -1,12 +1,24 @@
+export type IdentitySource = 'patient_code' | 'packet_profile' | 'manual_walkin';
+
 export interface Patient {
   id: string;
   name: string;
   age: number;
   gender: string;
-  phone: string;
-  blood_group?: string;
-  email?: string;
-  address?: string;
+  phone?: string | null;
+  blood_group?: string | null;
+  email?: string | null;
+  address?: string | null;
+  dob?: string | null;
+  abha_id?: string | null;
+  /** UUID from UniCare patient DB profiles.id — the canonical cross-system identity */
+  source_profile_id?: string | null;
+  /** UC-XXXXXXXX code scanned/entered during registration */
+  patient_code?: string | null;
+  /** How this patient was first registered in this clinic */
+  identity_source?: IdentitySource | null;
+  /** Last time identity fields were synced from UniCare */
+  last_identity_sync_at?: string | null;
 }
 
 export interface Consultation {
@@ -54,6 +66,7 @@ export interface Appointment {
   status: AppointmentStatus;
   queue_id: string | null;
   notes: string | null;
+  shared_packet_id?: string | null;
   created_at: string;
   updated_at: string;
   patient?: Patient;      // joined via select

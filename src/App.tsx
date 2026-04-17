@@ -57,6 +57,7 @@ import { useAuth } from './contexts/AuthContext';
 import type { DoctorProfile } from './contexts/AuthContext';
 import { supabase, patientSupabase } from './lib/supabase';
 import { classifyQRContent, resolvePatientCode } from './services/patientIdentityService';
+import { resolveOrUpsertPatient } from './services/patientResolverService';
 import LoginPage from './pages/LoginPage';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -2249,6 +2250,10 @@ export default function App() {
   const [consultationForm, setConsultationForm] = useState({ symptoms: '', diagnosis: '', notes: '', medicines: [] as Medicine[] });
   const [newMedicine, setNewMedicine] = useState<Medicine>({ name: '', timing: [], food: 'after', days: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  /** profile_id from UniCare patient DB — set when a QR packet is scanned directly (no appointment) */
+  const [activePacketProfileId, setActivePacketProfileId] = useState<string | null>(null);
+  /** Idempotency guard: prevents double-submit on handleSaveConsultation within a session */
+  const saveLockRef = useRef(false);
 
   // ── Sync lock: prevents concurrent syncs from the realtime chain ────────
   const syncingRef = useRef(false);
@@ -2392,7 +2397,7 @@ export default function App() {
     return data && data.length > 0 ? (data[0].token_number || 0) + 1 : 1;
   }, [doctorProfile]);
 
-  // ── QR Scan ────────────────────────────────────────────────────────────────
+  // ── QR Scan (Health Packet) ────────────────────────────────────────────────
 
   const handleQRScan = async (url: string) => {
     if (!doctorProfile) return;
@@ -2441,33 +2446,39 @@ export default function App() {
       };
 
       setPacketData(fetchedPacket);
+      // Remember packet's canonical profile_id for prescription writeback
+      setActivePacketProfileId(profile.id);
 
-      const patientPhone = fetchedPacket.profile_data.phone;
-      const patientName = fetchedPacket.profile_data.name;
-      let patient = patients.find(p => (patientPhone && p.phone === patientPhone) || (!patientPhone && p.name === patientName));
-
-      if (!patient) {
-        const { data, error } = await supabase.from('patients').insert({
-          doctor_id: doctorProfile!.id, name: patientName,
+      // ── Resolve or create local patient record with canonical identity ─────
+      const { patient } = await resolveOrUpsertPatient(
+        {
+          source_profile_id: profile.id,
+          patient_code: profile.patient_code || null,
+          name: profile.name,
           age: profile.dob ? calculateAge(profile.dob) : 0,
-          gender: fetchedPacket.profile_data.gender, phone: patientPhone,
-          email: fetchedPacket.profile_data.email, abha_id: fetchedPacket.profile_data.abha_id,
-          address: fetchedPacket.profile_data.address, blood_group: fetchedPacket.profile_data.blood_group,
-        }).select().single();
-        if (error) throw error;
-        patient = data as Patient;
-        fetchPatients();
-      }
+          gender: profile.gender || 'Not specified',
+          phone: profile.phone || null,
+          email: profile.email || null,
+          blood_group: profile.blood_group || null,
+          address: profile.address || null,
+          abha_id: profile.abha_id || null,
+          dob: profile.dob || null,
+          identity_source: 'packet_profile',
+        },
+        doctorProfile.id,
+        supabase
+      );
+      fetchPatients();
 
       const token = await getNextToken();
       const { data: queueData, error: queueError } = await supabase.from('queue').insert({
-        doctor_id: doctorProfile!.id, patient_id: patient!.id, status: 'waiting', token_number: token,
+        doctor_id: doctorProfile!.id, patient_id: patient.id, status: 'waiting', token_number: token,
         chief_complaint: ''
       }).select('*, patient:patients(*)').single();
       if (queueError) throw queueError;
 
       fetchQueue();
-      setSelectedPatient(patient!);
+      setSelectedPatient(patient);
       setActiveQueueItem(queueData as unknown as QueueItem);
       navigate('/consultation');
     } catch (err: any) {
@@ -2489,52 +2500,34 @@ export default function App() {
       // 1. Resolve full profile from patient DB (throws if inactive / not found)
       const profile = await resolvePatientCode(code);
 
-      // 2. Look up existing patient in this doctor's DB:
-      //    Priority: patient_code match > source_profile_id match > phone match
-      let patient =
-        patients.find(p => (p as any).patient_code === profile.patient_code) ??
-        patients.find(p => (p as any).source_profile_id === profile.id) ??
-        (profile.phone ? patients.find(p => p.phone === profile.phone) : undefined);
+      // 2. Resolve or upsert local patient with canonical identity fields persisted
+      const { patient } = await resolveOrUpsertPatient(
+        {
+          source_profile_id: profile.id,
+          patient_code: profile.patient_code,
+          name: profile.name,
+          age: profile.age,
+          gender: profile.gender || 'Not specified',
+          phone: profile.phone || null,
+          email: profile.email || null,
+          abha_id: profile.abha_id || null,
+          address: profile.address || null,
+          blood_group: profile.blood_group || null,
+          dob: profile.dob || null,
+          identity_source: 'patient_code',
+        },
+        doctorProfile.id,
+        supabase
+      );
+      fetchPatients();
 
-      const enrichedData = {
-        name: profile.name,
-        age: profile.age,
-        gender: profile.gender || 'Not specified',
-        phone: profile.phone || null,
-        email: profile.email || null,
-        abha_id: profile.abha_id || null,
-        address: profile.address || null,
-        blood_group: profile.blood_group || null,
-        dob: profile.dob || null,
-      };
-
-      if (!patient) {
-        // 3a. Create new patient record
-        const { data: newP, error: pErr } = await supabase
-          .from('patients')
-          .insert({ doctor_id: doctorProfile.id, ...enrichedData })
-          .select()
-          .single();
-        if (pErr) throw new Error(`Failed to create patient record: ${pErr.message}`);
-        patient = newP as Patient;
-        fetchPatients();
-      } else {
-        // 3b. Enrich existing patient record with latest profile data
-        await supabase
-          .from('patients')
-          .update(enrichedData)
-          .eq('id', patient.id);
-        // Optimistically update local reference
-        patient = { ...patient, ...enrichedData } as Patient;
-      }
-
-      // 4. Idempotency check — skip if already in today's queue (waiting)
+      // 3. Idempotency check — skip if already in today's queue (waiting)
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const { data: existingQueue } = await supabase
         .from('queue')
         .select('id, status')
         .eq('doctor_id', doctorProfile.id)
-        .eq('patient_id', patient!.id)
+        .eq('patient_id', patient.id)
         .gte('created_at', today.toISOString())
         .in('status', ['waiting', 'in-consultation'])
         .maybeSingle();
@@ -2546,11 +2539,11 @@ export default function App() {
         return;
       }
 
-      // 5. Add to queue
+      // 4. Add to queue
       const token = await getNextToken();
       const { error: qErr } = await supabase.from('queue').insert({
         doctor_id: doctorProfile.id,
-        patient_id: patient!.id,
+        patient_id: patient.id,
         status: 'waiting',
         token_number: token,
         chief_complaint: '',
@@ -2706,19 +2699,23 @@ export default function App() {
         setScanError(`Warning: Appointment confirmed locally, but patient notification failed: ${confirmWritebackErr.message}`);
       }
 
-      // 3. Resolve / create local patient record
+      // 3. Resolve / create local patient record using canonical profile_id
       let patient = appt.patient_id
         ? patients.find(p => p.id === appt.patient_id) ?? null
-        : patients.find(p => p.name === appt.patient_name) ?? null;
+        : null;
 
       if (!patient) {
-        const { data: newP, error: pErr } = await supabase
-          .from('patients')
-          .insert({ doctor_id: doctorProfile.id, name: appt.patient_name, age: 0, gender: 'Not specified' })
-          .select()
-          .single();
-        if (pErr) throw pErr;
-        patient = newP as Patient;
+        // appt.profile_id is always non-null (DB NOT NULL). Use it as source_profile_id.
+        const resolved = await resolveOrUpsertPatient(
+          {
+            source_profile_id: appt.profile_id,
+            name: appt.patient_name,
+            identity_source: 'packet_profile',
+          },
+          doctorProfile.id,
+          supabase
+        );
+        patient = resolved.patient;
         fetchPatients();
       }
 
@@ -2787,24 +2784,28 @@ export default function App() {
         return;
       }
 
-      // Resolve or create the local patient record
+      // Resolve or create the local patient record using canonical profile_id
       let patient = appt.patient_id
         ? patients.find(p => p.id === appt.patient_id) ?? null
-        : patients.find(p => p.name === appt.patient_name) ?? null;
+        : null;
 
       if (!patient) {
-        const { data: newP, error: pErr } = await supabase
-          .from('patients')
-          .insert({ doctor_id: doctorProfile.id, name: appt.patient_name, age: 0, gender: 'Not specified' })
-          .select()
-          .single();
-        if (pErr) throw pErr;
-        patient = newP as Patient;
+        // appt.profile_id is always non-null. Use it as source_profile_id.
+        const resolved = await resolveOrUpsertPatient(
+          {
+            source_profile_id: appt.profile_id,
+            name: appt.patient_name,
+            identity_source: 'packet_profile',
+          },
+          doctorProfile.id,
+          supabase
+        );
+        patient = resolved.patient;
         fetchPatients();
       }
 
       // ── Load health packet if attached to this appointment ─────────────────
-      const packetId = (appt as any).shared_packet_id;
+      const packetId = appt.shared_packet_id;
       if (packetId) {
         try {
           setScanLoading(true);
@@ -2907,6 +2908,12 @@ export default function App() {
 
   const handleSaveConsultation = async (printPdf: boolean) => {
     if (!selectedPatient || !doctorProfile) return;
+    // ── Client-side idempotency guard — prevents double-submit ──────────────
+    if (saveLockRef.current) {
+      console.warn('[handleSaveConsultation] save already in progress — ignoring duplicate call');
+      return;
+    }
+    saveLockRef.current = true;
     try {
       const { data, error } = await supabase.from('consultations').insert({
         doctor_id: doctorProfile.id, patient_id: selectedPatient.id,
@@ -2918,6 +2925,21 @@ export default function App() {
 
       if (activeQueueItem) {
         await supabase.from('queue').update({ status: 'completed' }).eq('id', activeQueueItem.id);
+      }
+
+      // ── Determine canonical UniCare profile_id for prescription writeback ──
+      // Priority: appointment.profile_id > patient.source_profile_id > packetProfileId
+      const canonicalProfileId: string | null =
+        activeAppointment?.profile_id ??
+        selectedPatient.source_profile_id ??
+        activePacketProfileId ??
+        null;
+
+      if (!canonicalProfileId) {
+        console.warn(
+          '[handleSaveConsultation] No UniCare profile_id available — prescription saved locally only.',
+          { patientId: selectedPatient.id, identity_source: selectedPatient.identity_source }
+        );
       }
 
       // Build the full prescription payload with all details
@@ -2936,13 +2958,14 @@ export default function App() {
       };
 
       if (activeAppointment) {
+        // ── Patient-booked appointment path ────────────────────────────────
         // Mark appointment complete on doctor side
         await supabase
           .from('appointments')
           .update({ status: 'completed' })
           .eq('id', activeAppointment.id);
 
-        // Writeback appointment status to patient app — check error so failures are visible
+        // Writeback appointment status to patient app
         const { error: completeWritebackErr } = await patientSupabase
           .from('appointments')
           .update({ status: 'completed' })
@@ -2952,37 +2975,30 @@ export default function App() {
           setScanError(`Warning: Consultation saved, but patient status sync failed: ${completeWritebackErr.message}`);
         }
 
-        // Write full prescription to patient app so patient can view all details
-        const { error: prescWritebackErr } = await patientSupabase.from('prescriptions').insert({
-          ...prescriptionPayload,
-          appointment_id: activeAppointment.patient_unicare_appointment_id,
-          profile_id: activeAppointment.profile_id,
-        });
-        if (prescWritebackErr) {
-          console.error('Patient DB prescription writeback failed (RLS/auth):', prescWritebackErr);
-        }
-      } else if (selectedPatient) {
-        // Walk-in or QR scan consultation: try to find the patient's profile in UniCare
-        // by matching phone number, and write prescription there too
-        const patientPhone = selectedPatient.phone;
-        if (patientPhone) {
-          const { data: profile } = await patientSupabase
-            .from('profiles')
-            .select('id')
-            .eq('phone', patientPhone)
-            .maybeSingle();
-          if (profile?.id) {
-            const { error: walkInPrescErr } = await patientSupabase.from('prescriptions').insert({
-              ...prescriptionPayload,
-              profile_id: profile.id,
-              appointment_id: null,
-            });
-            if (walkInPrescErr) {
-              console.error('Patient DB walk-in prescription writeback failed (RLS/auth):', walkInPrescErr);
-            }
+        // Write full prescription — uses canonical profile_id from appointment
+        if (canonicalProfileId) {
+          const { error: prescWritebackErr } = await patientSupabase.from('prescriptions').insert({
+            ...prescriptionPayload,
+            appointment_id: activeAppointment.patient_unicare_appointment_id,
+            profile_id: canonicalProfileId,
+          });
+          if (prescWritebackErr) {
+            console.error('Patient DB prescription writeback failed (RLS/auth):', prescWritebackErr);
           }
         }
+      } else if (canonicalProfileId) {
+        // ── Walk-in / QR-packet / UC-code path ────────────────────────────
+        // We have a canonical profile_id — write prescription without appointment
+        const { error: walkInPrescErr } = await patientSupabase.from('prescriptions').insert({
+          ...prescriptionPayload,
+          profile_id: canonicalProfileId,
+          appointment_id: null,
+        });
+        if (walkInPrescErr) {
+          console.error('Patient DB walk-in prescription writeback failed (RLS/auth):', walkInPrescErr);
+        }
       }
+      // else: pure walk-in with no UniCare identity — prescription saved locally only
 
       if (printPdf) {
         const doc = PrescriptionPDF(data as Consultation, selectedPatient, doctorProfile);
@@ -2995,11 +3011,15 @@ export default function App() {
       setActiveQueueItem(null);
       setActiveAppointment(null);
       setPacketData(null);
+      setActivePacketProfileId(null);
       fetchQueue();
       fetchAppointments();
       navigate('/');
     } catch (err) {
       console.error('Error saving consultation:', err);
+    } finally {
+      // Always release the save lock so the next consultation can proceed
+      saveLockRef.current = false;
     }
   };
 
