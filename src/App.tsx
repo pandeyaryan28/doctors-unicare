@@ -57,6 +57,7 @@ import { useAuth } from './contexts/AuthContext';
 import type { DoctorProfile } from './contexts/AuthContext';
 import { supabase, patientSupabase } from './lib/supabase';
 import { classifyQRContent, resolvePatientCode } from './services/patientIdentityService';
+import { buildDoctorQrPayload } from './lib/qrPayload';
 import { resolveOrUpsertPatient } from './services/patientResolverService';
 import LoginPage from './pages/LoginPage';
 import jsPDF from 'jspdf';
@@ -978,20 +979,19 @@ function DashboardPage({ patients, queue, onQRScan, onScanPatientCode, onStartCo
   const { doctorProfile } = useAuth();
   const [showScanner, setShowScanner] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
-  const [urlCopied, setUrlCopied] = useState(false);
 
   const waiting = queue.filter(q => q.status === 'waiting');
   const completed = queue.filter(q => q.status === 'completed');
   const inConsult = queue.find(q => q.status === 'in-consultation');
 
   const clinicCode = (doctorProfile as any)?.clinic_code || '';
-  const bookingUrl = clinicCode ? `https://unicare-patient.vercel.app/book?d=${clinicCode}` : '';
+  // Build structured JSON payload for QR — app-scanner-only, no URL deep-link
+  const qrPayload = clinicCode ? buildDoctorQrPayload(clinicCode) : '';
 
-  const copyToClipboard = async (text: string, type: 'code' | 'url') => {
+  const copyToClipboard = async (text: string, type: 'code') => {
     try {
       await navigator.clipboard.writeText(text);
       if (type === 'code') { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }
-      else { setUrlCopied(true); setTimeout(() => setUrlCopied(false), 2000); }
     } catch {}
   };
 
@@ -1016,12 +1016,12 @@ function DashboardPage({ patients, queue, onQRScan, onScanPatientCode, onStartCo
             <div className="flex-shrink-0 flex flex-col items-center gap-2">
               <div className="w-[130px] h-[130px] rounded-2xl overflow-hidden border-2 border-gray-100 dark:border-slate-700 bg-white p-1">
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=128x128&margin=2&data=${encodeURIComponent(bookingUrl)}`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=128x128&margin=2&data=${encodeURIComponent(qrPayload)}`}
                   alt="Booking QR Code"
                   className="w-full h-full"
                 />
               </div>
-              <p className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">Scan to book</p>
+              <p className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">Scan in UniCare app to book</p>
             </div>
 
             {/* Code + URL */}
@@ -2003,21 +2003,18 @@ function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [clinicCode, setClinicCode] = useState<string>('');
   const [codeCopied, setCodeCopied] = useState(false);
-  const [urlCopied, setUrlCopied] = useState(false);
 
   // Deterministic code: DR + first 4 hex chars of doctor UUID (always same, collision-free for clinic scale)
   const generateClinicCode = (id: string) =>
     'DR' + id.replace(/-/g, '').slice(0, 4).toUpperCase();
 
-  const bookingUrl = clinicCode
-    ? `https://unicare-patient.vercel.app/book?d=${clinicCode}`
-    : '';
+  // Build structured JSON payload for QR — app-scanner-only, no URL deep-link
+  const qrPayload = clinicCode ? buildDoctorQrPayload(clinicCode) : '';
 
-  const copyToClipboard = async (text: string, type: 'code' | 'url') => {
+  const copyToClipboard = async (text: string, type: 'code') => {
     try {
       await navigator.clipboard.writeText(text);
       if (type === 'code') { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }
-      else { setUrlCopied(true); setTimeout(() => setUrlCopied(false), 2000); }
     } catch {}
   };
 
@@ -2128,12 +2125,12 @@ function ProfilePage() {
             <div className="flex-shrink-0 flex flex-col items-center gap-2">
               <div className="w-[130px] h-[130px] rounded-2xl overflow-hidden border-2 border-gray-100 dark:border-slate-700 bg-white p-1">
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=128x128&margin=2&data=${encodeURIComponent(bookingUrl)}`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=128x128&margin=2&data=${encodeURIComponent(qrPayload)}`}
                   alt="Booking QR Code"
                   className="w-full h-full"
                 />
               </div>
-              <p className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">Scan to book</p>
+              <p className="text-[10px] text-gray-400 dark:text-slate-500 font-medium">Scan in UniCare app to book</p>
             </div>
 
             {/* Code + URL */}
