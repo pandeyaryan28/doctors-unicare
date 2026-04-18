@@ -35,5 +35,5 @@ export function buildDoctorQrPayload(clinicCode: string): string {
       `buildDoctorQrPayload: invalid clinic code "${code}". Expected DRxxxx (6 chars, uppercase).`
     );
   }
-  return JSON.stringify({ v: 1, type: 'doctor', code });
+  return JSON.stringify({ code });
 }
